@@ -16,12 +16,39 @@ const WINDED_SPEED = JEEP_TOP_SPEED * 0.42
 
 const SPRINT_SECONDS = 6
 const WINDED_SECONDS = 6.5
-const LOSE_DISTANCE = 120
-const LOSE_SECONDS = 3
+/**
+ * Seconds with no trace of you before it stops chasing and starts hunting.
+ * An engine cutting out is obvious immediately; a jeep pulling out of earshot
+ * takes it a while to be sure about.
+ */
+const LOSE_SECONDS_SILENCED = 0.7
+const LOSE_SECONDS_OUTRUN = 3
 const CATCH_DISTANCE = 6.4
-const ALWAYS_NOTICE = 26
+/**
+ * Two burning headlights in a black forest are their own giveaway, so with the
+ * engine running this is the floor no matter how gently you creep. It sits
+ * above the exposed-in-the-open sight range on purpose: going dark has to be an
+ * improvement everywhere, and a big one under cover.
+ */
+const HEADLIGHT_RANGE = 78
 
-export type RexState = 'patrol' | 'alert' | 'chase' | 'winded'
+/** How long it casts around the last place it had you before giving up. */
+const SEARCH_SECONDS = 14
+/** Eyesight against a silent jeep: out in the open, versus buried in timber. */
+const SIGHT_EXPOSED = 46
+const SIGHT_HIDDEN = 6.5
+
+export type RexState = 'patrol' | 'alert' | 'chase' | 'winded' | 'search'
+
+/** What the player is giving away this tick. */
+export interface PlayerSense {
+  position: THREE.Vector3
+  /** Engine noise as a hearing radius; zero when shut down. */
+  noiseRadius: number
+  /** 0 out in the open, 1 with enough trees around to break up the shape. */
+  cover: number
+  engineRunning: boolean
+}
 
 // ---------------------------------------------------------------------------
 // rig constants
@@ -156,7 +183,7 @@ class RexAssets {
     brow.translate(0, 0.66, 0.55)
     this.brow = brow
 
-    this.eyeG = new THREE.SphereGeometry(0.17, 8, 6)
+    this.eyeG = new THREE.SphereGeometry(0.21, 8, 6)
 
     const upper: THREE.BufferGeometry[] = []
     const lower: THREE.BufferGeometry[] = []
@@ -233,6 +260,13 @@ export class Rex {
   private arms: THREE.Group[] = []
   private scale: number
 
+  /** Last place it had a fix on the player. */
+  private lastKnown = new THREE.Vector3()
+  private searchAnchor = new THREE.Vector3()
+  private searchPoint = new THREE.Vector3()
+  private rangeAtLoss = 0
+  private searchFor = 0
+
   private gait = 0
   private speed = 0
   private stamina = SPRINT_SECONDS
@@ -303,8 +337,10 @@ export class Rex {
     mesh(a.snout, a.hide, this.head)
     mesh(a.brow, a.spine, this.head)
     mesh(a.teethTop, a.bone, this.head)
+    // Set proud of the skull, not inside it: with the engine off these two
+    // sparks are the only thing the player can actually see coming.
     for (const sx of [-1, 1]) {
-      mesh(a.eyeG, a.eye, this.head).position.set(sx * 0.47, 0.3, 0.52)
+      mesh(a.eyeG, a.eye, this.head).position.set(sx * 0.66, 0.42, 0.58)
     }
 
     this.jaw.position.set(0, -0.3, 0.2)
@@ -376,6 +412,12 @@ export class Rex {
     this.state = 'patrol'
     this.stamina = SPRINT_SECONDS
     this.speed = PATROL_SPEED
+    this.reaction = 0
+    this.lostFor = 0
+    this.searchFor = 0
+    this.lastKnown.copy(this.position)
+    this.searchPoint.copy(this.position)
+    this.searchAnchor.copy(this.position)
     this.root.position.copy(this.position)
     this.root.rotation.y = yaw
   }
@@ -383,44 +425,76 @@ export class Rex {
   /**
    * @returns 'spotted' on the tick it locks on, 'caught' if it reaches the jeep.
    */
-  update(
-    dt: number,
-    time: number,
-    target: THREE.Vector3,
-    noiseRadius: number,
-    rng: Rng,
-  ): 'none' | 'spotted' | 'caught' {
-    const dx = target.x - this.position.x
-    const dz = target.z - this.position.z
+  update(dt: number, time: number, sense: PlayerSense, rng: Rng): 'none' | 'spotted' | 'caught' {
+    const dx = sense.position.x - this.position.x
+    const dz = sense.position.z - this.position.z
     this.distance = Math.hypot(dx, dz)
     let event: 'none' | 'spotted' | 'caught' = 'none'
 
     // ---------------- senses ----------------
-    const heard = this.distance < noiseRadius || this.distance < ALWAYS_NOTICE
+    // A running engine is heard from a long way off. Shut it down and it comes
+    // down to eyesight, which thick cover defeats almost completely.
+    const detected = sense.engineRunning
+      ? this.distance < Math.max(sense.noiseRadius, HEADLIGHT_RANGE)
+      : this.distance < lerp(SIGHT_EXPOSED, SIGHT_HIDDEN, sense.cover)
+
+    if (detected) {
+      this.lastKnown.copy(sense.position)
+      this.lostFor = 0
+    } else {
+      // remember how far off it was the instant the trail went cold
+      if (this.lostFor === 0) this.rangeAtLoss = this.distance
+      this.lostFor += dt
+    }
+
+    const hunting = this.state === 'chase' || this.state === 'winded'
     if (this.state === 'patrol' || this.state === 'alert') {
-      if (heard) {
+      if (detected) {
         this.reaction += dt
         this.state = 'alert'
         if (this.reaction > 0.55) {
           this.state = 'chase'
-          this.lostFor = 0
           event = 'spotted'
         }
       } else {
         this.reaction = Math.max(0, this.reaction - dt * 0.8)
         if (this.state === 'alert' && this.reaction <= 0) this.state = 'patrol'
       }
+    } else if (hunting) {
+      // Break contact - by outrunning it or by going dark - and it drops to
+      // hunting the last place it had you.
+      const patience = sense.engineRunning ? LOSE_SECONDS_OUTRUN : LOSE_SECONDS_SILENCED
+      if (this.lostFor > patience) {
+        this.state = 'search'
+        this.searchFor = SEARCH_SECONDS
+        this.stamina = SPRINT_SECONDS * 0.6
+        // It was tracking a sound, not a map pin, and the further off it was
+        // when the sound stopped the worse it had you placed. This is what
+        // makes killing the engine early pay and killing it late useless.
+        const err = clamp(this.rangeAtLoss * 0.5, 8, 50)
+        const a = rng.range(0, Math.PI * 2)
+        const r = err * Math.sqrt(rng.next())
+        this.searchAnchor.set(
+          this.lastKnown.x + Math.cos(a) * r,
+          0,
+          this.lastKnown.z + Math.sin(a) * r,
+        )
+        this.pickSearchPoint(rng, true)
+      }
     } else {
-      // chasing or winded: it keeps coming until you break contact
-      if (this.distance > LOSE_DISTANCE && !heard) {
-        this.lostFor += dt
-        if (this.lostFor > LOSE_SECONDS) {
+      // searching: re-acquire on any trace, otherwise wind down and wander off
+      if (detected) {
+        this.state = 'chase'
+        this.reaction = 0
+        event = 'spotted'
+      } else {
+        this.searchFor -= dt
+        if (this.searchFor <= 0) {
           this.state = 'patrol'
           this.reaction = 0
-          this.stamina = SPRINT_SECONDS * 0.6
+        } else if (this.position.distanceTo(this.searchPoint) < 11) {
+          this.pickSearchPoint(rng, false)
         }
-      } else {
-        this.lostFor = 0
       }
     }
 
@@ -447,13 +521,26 @@ export class Rex {
     let turnRate: number
 
     if (this.state === 'chase' || this.state === 'winded') {
-      desiredYaw = Math.atan2(dx, dz)
+      // Homes on the last place it actually sensed you, not on where you are.
+      // While it can hear you those are the same point; the moment you go dark
+      // they stop being, and that gap is the whole hiding mechanic.
+      desiredYaw = Math.atan2(
+        this.lastKnown.x - this.position.x,
+        this.lastKnown.z - this.position.z,
+      )
       wantSpeed = this.state === 'chase' ? CHASE_SPEED : WINDED_SPEED
       // big animal, wide arc: this is the whole counterplay
       turnRate = this.state === 'chase' ? 1.0 : 1.5
     } else if (this.state === 'alert') {
       desiredYaw = Math.atan2(dx, dz)
       wantSpeed = INVESTIGATE_SPEED
+      turnRate = 1.6
+    } else if (this.state === 'search') {
+      desiredYaw = Math.atan2(
+        this.searchPoint.x - this.position.x,
+        this.searchPoint.z - this.position.z,
+      )
+      wantSpeed = INVESTIGATE_SPEED * 0.7
       turnRate = 1.6
     } else {
       this.wanderTimer -= dt
@@ -507,6 +594,19 @@ export class Rex {
 
     this.pose(dt, time)
     return event
+  }
+
+  /**
+   * Somewhere to go while hunting. A rex tracks a sound, not a map pin, so the
+   * first guess is deliberately off; after that it casts about the area.
+   */
+  private pickSearchPoint(rng: Rng, first: boolean) {
+    const spread = first ? 12 : 22
+    const a = rng.range(0, Math.PI * 2)
+    const r = spread * Math.sqrt(rng.next())
+    const x = clamp(this.searchAnchor.x + Math.cos(a) * r, -HALF + 30, HALF - 30)
+    const z = clamp(this.searchAnchor.z + Math.sin(a) * r, -HALF + 30, HALF - 30)
+    this.searchPoint.set(x, this.world.heightAt(x, z), z)
   }
 
   /** 0 in the open, 3 when it is shouldering through a stand of trees. */

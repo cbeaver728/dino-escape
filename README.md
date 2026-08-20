@@ -24,7 +24,35 @@ a straight line. What you can do:
 - **Wait out the sprint.** It can only sprint in bursts. When it blows up and has
   to lope, you gain ground — but only if you are still driving clean. Clip a tree
   during the recovery and you hand all of it back.
+- **Kill the engine.** You go dark, silent and immobile. It can no longer hear
+  you, so it hunts the last place it *did* — and it never had that place pinned
+  exactly. Get this right and it casts around the wrong patch of forest, gives
+  up, and wanders off.
 - **Water.** It slows you down. It slows them down more.
+
+Going dark is a real gamble, not a get-out-of-jail card, because two things have
+to be true at once:
+
+- **Early enough.** Its guess at where you are is off by roughly half the
+  distance it was at when the sound stopped. Cut out at 90m and it hunts a patch
+  a long way from you; cut out at 25m and it has you placed well enough to walk
+  over and find you.
+- **Under cover.** Silent and still in thick timber, it has to almost tread on
+  you to notice. Silent and still out on the open grass, it just looks over and
+  sees you.
+
+Measured over repeated trials in one map, with a single rex and the jeep already
+stopped (the worst case — coasting in adds distance):
+
+| | cut at 25m | cut at 55m | cut at 90m |
+| --- | --- | --- | --- |
+| deep in a grove | 0/6 got away | 3/6 | 6/6 |
+| patchy scrub | 0/6 | 0/6 | 1/6 |
+| open ground | 0/6 | 0/6 | 0/6 |
+
+Sitting there is its own problem: you cannot see, you cannot move, the other
+five are still wandering, and restarting fires a very loud starter motor. In the
+dark the only warning you get is a pair of amber eyes and the footsteps.
 
 Break contact for long enough and it loses interest and goes back to wandering.
 
@@ -43,8 +71,10 @@ Reach the helipad and you live.
   once you have stopped and the jeep backs up.
 - **Right thumb** — the steering wheel. Drag left and right; it self-centres when
   you let go.
+- The small amber **ENGINE** button sits above the pedals, under the same thumb.
 
-**Desktop** — `W`/`S` to drive, `A`/`D` to steer. Arrow keys and space also work.
+**Desktop** — `W`/`S` to drive, `A`/`D` to steer, `E` for the engine. Arrow keys
+and space also work.
 
 ## Running it locally
 
@@ -114,7 +144,10 @@ The numbers that decide how the game feels:
 | `JEEP_TOP_SPEED` | `jeep.ts` | Everything else is expressed relative to this. |
 | `CHASE_SPEED` | `rex.ts` | 1.3× the jeep. |
 | `SPRINT_SECONDS` / `WINDED_SECONDS` | `rex.ts` | The sprint-and-recover cycle. A clean run nets you ground over one full cycle; that is the whole escape. |
-| `LOSE_DISTANCE` | `rex.ts` | How far ahead you must get to break contact. |
+| `HEADLIGHT_RANGE` | `rex.ts` | How far your lights give you away with the engine on. |
+| `SIGHT_EXPOSED` / `SIGHT_HIDDEN` | `rex.ts` | Eyesight against a shut-down jeep, open versus under cover. |
+| `SEARCH_SECONDS` | `rex.ts` | How long it hunts before wandering off. |
+| `COVER_TREES` | `world.ts` | Trees needed nearby to count as properly hidden. |
 | `REX_COUNT` | `main.ts` | How crowded the map is. |
 | `MIN_TREE_GAP` | `world.ts` | Closest two trunks may stand - how open the woods feel. |
 | `MIN_CLEAR_FRACTION` | `postfx.ts` | The 60% visibility floor. |

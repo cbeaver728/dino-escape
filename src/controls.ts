@@ -12,6 +12,8 @@ const STEER_TRAVEL = 78 // px of thumb drag for full lock
 export class Controls {
   readonly input: DriveInput = { steer: 0, throttle: false, brake: false }
   readonly isTouch: boolean
+  /** Set by the game; fired by the engine button or the E key. */
+  onEngineToggle: (() => void) | null = null
 
   private keys = new Set<string>()
   private keySteer = 0
@@ -27,6 +29,7 @@ export class Controls {
     this.wheelArt = document.getElementById('wheelArt')
 
     addEventListener('keydown', (e) => {
+      if (e.code === 'KeyE' && !e.repeat) this.onEngineToggle?.()
       this.keys.add(e.code)
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault()
     })
@@ -36,6 +39,12 @@ export class Controls {
     this.bindPedal('go', (down) => (this.input.throttle = down))
     this.bindPedal('brake', (down) => (this.input.brake = down))
     this.bindWheel()
+
+    // fires on press, not on release: a panic tap should not need a clean lift
+    document.getElementById('engine')?.addEventListener('pointerdown', (e) => {
+      e.preventDefault()
+      this.onEngineToggle?.()
+    })
   }
 
   private bindPedal(id: string, set: (down: boolean) => void) {

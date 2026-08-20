@@ -10,6 +10,11 @@ const ROLL_DRAG = 3.4
 const WHEELBASE = 3.1
 const MAX_STEER = 0.56
 const BODY_RADIUS = 1.55
+/** Coast-down with no engine. Low enough that cutting it at speed lets you
+ * glide a long way into cover - which is exactly the skill being rewarded. */
+const STALL_BRAKE = 4.5
+/** The starter is loud - restarting near a rex re-alerts it. */
+const RESTART_NOISE = 78
 
 export interface DriveInput {
   /** -1 (full left) .. 1 (full right) */
@@ -26,7 +31,10 @@ export class Jeep {
 
   /** How loud the engine is right now, as a hearing radius in metres. */
   noiseRadius = 22
+  engineOn = true
 
+  private fill!: THREE.PointLight
+  private lampMat!: THREE.MeshBasicMaterial
   private steerAngle = 0
   private wheels: THREE.Object3D[] = []
   private frontWheels: THREE.Object3D[] = []
@@ -120,9 +128,24 @@ export class Jeep {
 
     // Soft fill behind and above, on the camera's side of the truck. Without it
     // the jeep is a black cut-out, because its own headlights face away.
-    const fill = new THREE.PointLight(0xbccadd, 45, 20, 2)
-    fill.position.set(0, 5, -4.5)
-    this.group.add(fill)
+    this.fill = new THREE.PointLight(0xbccadd, 45, 20, 2)
+    this.fill.position.set(0, 5, -4.5)
+    this.group.add(this.fill)
+    this.lampMat = lamp
+  }
+
+  /**
+   * Kill the engine and you are a dark, silent, immobile lump - which is the
+   * only way to make a rex lose you once it has locked on, and a very bad idea
+   * anywhere it can still see you.
+   */
+  setEngine(on: boolean) {
+    if (on === this.engineOn) return
+    this.engineOn = on
+    if (on) {
+      // the starter is loud: restarting under a rex's nose gives you away
+      this.noiseRadius = Math.max(this.noiseRadius, RESTART_NOISE)
+    }
   }
 
   reset(pos: THREE.Vector3, yaw: number) {
@@ -130,6 +153,8 @@ export class Jeep {
     this.yaw = yaw
     this.speed = 0
     this.steerAngle = 0
+    this.engineOn = true
+    this.noiseRadius = 22
     this.group.position.copy(pos)
     this.group.rotation.set(0, yaw, 0)
   }
@@ -160,18 +185,24 @@ export class Jeep {
     const slope = clamp((ahead - here) / 3, -0.55, 0.55)
 
     // --- longitudinal ---
-    if (input.throttle && !input.brake) {
-      this.speed += ACCEL * (1 - 0.3 * wet) * dt
-    } else if (input.brake) {
-      if (this.speed > 0.4) this.speed -= BRAKE * dt
-      else this.speed -= ACCEL * 0.7 * dt // rolls into reverse once stopped
+    if (!this.engineOn) {
+      // Dead engine: rolls to a stop and stays put. Skipping the slope term
+      // matters, or a parked jeep creeps downhill all night.
+      this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), STALL_BRAKE * dt)
+      if (Math.abs(this.speed) < 0.06) this.speed = 0
+    } else {
+      if (input.throttle && !input.brake) {
+        this.speed += ACCEL * (1 - 0.3 * wet) * dt
+      } else if (input.brake) {
+        if (this.speed > 0.4) this.speed -= BRAKE * dt
+        else this.speed -= ACCEL * 0.7 * dt // rolls into reverse once stopped
+      } else {
+        this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), ROLL_DRAG * dt)
+      }
+      this.speed -= slope * 9 * dt
+      this.speed -= this.speed * (dragMul - 1) * 1.4 * dt
+      this.speed = clamp(this.speed, -REVERSE_TOP_SPEED, speedCap)
     }
-    if (!input.throttle && !input.brake) {
-      this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), ROLL_DRAG * dt)
-    }
-    this.speed -= slope * 9 * dt
-    this.speed -= this.speed * (dragMul - 1) * 1.4 * dt
-    this.speed = clamp(this.speed, -REVERSE_TOP_SPEED, speedCap)
 
     // --- bicycle-model heading ---
     // Heading is `forward = (sin yaw, cos yaw)`, and three.js is right-handed,
@@ -244,18 +275,22 @@ export class Jeep {
 
     this.wheelSpin -= (this.speed / 0.72) * dt
     for (const w of this.wheels) w.rotation.x = this.wheelSpin
-    for (const p of this.frontWheels) p.rotation.y = this.steerAngle
+    // negated for the same reason as the yaw: positive steer is the driver's right
+    for (const p of this.frontWheels) p.rotation.y = -this.steerAngle
 
-    this.tailMat.color.setHex(input.brake ? 0xff2a1c : 0x3a0806)
+    // --- lights follow the ignition ---
+    const lit = this.engineOn
+    for (const s of this.headlights) s.visible = lit
+    this.fill.intensity = damp(this.fill.intensity, lit ? 45 : 0, 6, dt)
+    this.lampMat.color.setHex(lit ? 0xfff6da : 0x14161a)
+    this.tailMat.color.setHex(lit && input.brake ? 0xff2a1c : 0x3a0806)
 
     // --- how far the engine carries ---
+    // Silent when shut down, so nothing can hear you; the decay is not instant,
+    // which is why cutting it early matters more than cutting it close.
     const rev = clamp(Math.abs(this.speed) / JEEP_TOP_SPEED, 0, 1)
-    const wantsNoise = 26 + rev * 72 + (input.throttle ? 8 : 0)
+    const wantsNoise = lit ? 26 + rev * 72 + (input.throttle ? 8 : 0) : 0
     this.noiseRadius = damp(this.noiseRadius, wantsNoise, 3, dt)
-  }
-
-  setHeadlights(on: boolean) {
-    for (const s of this.headlights) s.visible = on
   }
 
   dispose() {

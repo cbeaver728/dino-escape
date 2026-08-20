@@ -188,6 +188,27 @@ export class Sound {
     })
   }
 
+  /** Starter motor: deliberately conspicuous, because restarting is a gamble. */
+  starter() {
+    const ctx = this.ctx
+    if (!ctx || !this.master) return
+    const t = ctx.currentTime
+    const o = ctx.createOscillator()
+    o.type = 'square'
+    o.frequency.setValueAtTime(38, t)
+    o.frequency.linearRampToValueAtTime(72, t + 0.5)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.14, t + 0.05)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.62)
+    const f = ctx.createBiquadFilter()
+    f.type = 'lowpass'
+    f.frequency.value = 700
+    o.connect(f).connect(g).connect(this.master)
+    o.start(t)
+    o.stop(t + 0.65)
+  }
+
   silenceEngine() {
     if (this.engineGain && this.ctx) {
       this.engineGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.15)

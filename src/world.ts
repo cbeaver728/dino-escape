@@ -18,6 +18,11 @@ export const TRUNK_RADIUS = 0.95
  * reads as woodland you drive through rather than a fence. */
 const MIN_TREE_GAP = 9
 
+/** Trees within this range of a stopped jeep count towards hiding it. */
+const COVER_RADIUS = 19
+/** How many of them add up to full concealment. */
+const COVER_TREES = 8
+
 export interface Tree {
   x: number
   z: number
@@ -55,6 +60,26 @@ class TreeGrid {
     const cx = clamp(Math.floor((x + HALF) / this.cell), 0, this.cols - 1)
     const cz = clamp(Math.floor((z + HALF) / this.cell), 0, this.cols - 1)
     return cz * this.cols + cx
+  }
+
+  /** How many trunks stand within `r` of a point. */
+  count(x: number, z: number, r: number): number {
+    const span = Math.ceil(r / this.cell)
+    const cx = clamp(Math.floor((x + HALF) / this.cell), 0, this.cols - 1)
+    const cz = clamp(Math.floor((z + HALF) / this.cell), 0, this.cols - 1)
+    let n = 0
+    for (let dz = -span; dz <= span; dz++) {
+      for (let dx = -span; dx <= span; dx++) {
+        const gx = cx + dx
+        const gz = cz + dz
+        if (gx < 0 || gz < 0 || gx >= this.cols || gz >= this.cols) continue
+        for (const i of this.buckets[gz * this.cols + gx]) {
+          const t = this.trees[i]
+          if ((x - t.x) ** 2 + (z - t.z) ** 2 < r * r) n++
+        }
+      }
+    }
+    return n
   }
 
   /** Nearest overlapping tree for a circle of radius `r`, or null. */
@@ -201,6 +226,15 @@ export class World {
 
   treeHit(x: number, z: number, r: number): Tree | null {
     return this.grid.hit(x, z, r)
+  }
+
+  /**
+   * How well a stopped jeep is hidden here: 0 out on the open grass, 1 with
+   * enough timber around it to break up the shape. Only matters with the
+   * engine off - a running engine gives you away regardless of cover.
+   */
+  coverAt(x: number, z: number): number {
+    return clamp(this.grid.count(x, z, COVER_RADIUS) / COVER_TREES, 0, 1)
   }
 
   /** Furthest the jeep may get from the middle; past here the hills take over. */

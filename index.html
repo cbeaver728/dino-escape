@@ -62,11 +62,39 @@
     color: #ff5d4e; opacity: 0; text-shadow: 0 0 18px rgba(255, 60, 40, .8);
   }
   #alert.on { animation: pulse .9s ease-in-out infinite; opacity: 1; }
+  #alert.warn { color: #ffc45c; text-shadow: 0 0 18px rgba(255, 170, 60, .7); }
+  #alert.safe {
+    color: #7dfaa8; text-shadow: 0 0 18px rgba(60, 255, 140, .5);
+    animation: none; opacity: 1;
+  }
   @keyframes pulse { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
 
   /* ---------- touch controls ---------- */
-  #touch { position: absolute; inset: 0; display: none; }
-  body.touch #touch { display: block; }
+  /* The engine switch is wanted on desktop too, so the layer is always on and
+     only the driving controls themselves are gated on a touch screen. */
+  #touch { position: absolute; inset: 0; }
+  #go, #brake, #wheelzone { display: none; }
+  body.touch #go, body.touch #brake { display: grid; }
+  body.touch #wheelzone { display: block; }
+
+  #engine {
+    width: 78px; height: 78px; border-radius: 50%; pointer-events: auto;
+    display: grid; place-items: center; align-content: center; gap: 1px;
+    font-size: 9px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: #ffe6ac; background: rgba(24, 18, 8, .72);
+    border: 2px solid rgba(255, 196, 92, .55); cursor: pointer;
+    box-shadow: 0 0 22px rgba(255, 170, 60, .18); backdrop-filter: blur(6px);
+    transition: transform .07s ease;
+  }
+  #engine b { font-size: 15px; letter-spacing: .06em; color: #ffc45c; }
+  #engine:active { transform: scale(.92); }
+  #engine.off {
+    color: #8b97ab; border-color: rgba(150, 175, 210, .3);
+    background: rgba(10, 12, 18, .8); box-shadow: none;
+    animation: breathe 2.2s ease-in-out infinite;
+  }
+  #engine.off b { color: #dfe7f2; }
+  @keyframes breathe { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
 
   #pedals {
     position: absolute; left: calc(20px + env(safe-area-inset-left));
@@ -157,6 +185,7 @@
       <div id="pedals">
         <div id="go" class="pedal">Go</div>
         <div id="brake" class="pedal">Brake<small>hold = reverse</small></div>
+        <div id="engine">Engine<b id="engineState">On</b></div>
       </div>
       <div id="wheelzone">
         <div id="wheel">
@@ -181,6 +210,7 @@
       <li><b>Six T-Rexes</b> roam the map. They plod along until they <b>hear your engine</b> - the faster you drive, the further the sound carries.</li>
       <li>Once one locks on it sprints at <b>1.3x your top speed</b>. You cannot outrun it in a straight line. Use the trees: it turns wide.</li>
       <li>It sprints in bursts, then has to catch its breath. That is your window.</li>
+      <li><b>Kill the engine</b> and you go dark and silent - it can only hunt where it last heard you. Do it early, and in among the trees. Do it late, or out in the open, and it walks straight to you.</li>
       <li><b>Water slows you</b> - and slows them more.</li>
       <li>New map every single game.</li>
     </ul>

@@ -1,11 +1,11 @@
 import * as THREE from 'three'
 import { World, HALF, WATER_LEVEL } from './world'
 import { Jeep, JEEP_TOP_SPEED } from './jeep'
-import { Rex } from './rex'
+import { Rex, PlayerSense } from './rex'
 import { Controls } from './controls'
 import { Postfx } from './postfx'
 import { Sound } from './audio'
-import { Rng, clamp, damp, smoothstep } from './rng'
+import { Rng, clamp, damp, lerp, smoothstep } from './rng'
 
 const REX_COUNT = 6
 /** How far out a locked-on rex starts closing the screen down. */
@@ -40,10 +40,14 @@ scene.fog = new THREE.FogExp2(0x04060b, 0.0165)
 
 const camera = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.4, 1600)
 
-scene.add(new THREE.AmbientLight(0x2a3550, 0.42))
-const hemi = new THREE.HemisphereLight(0x2c3a5c, 0x070a10, 0.58)
+const AMBIENT_LIT = 0.42
+const HEMI_LIT = 0.58
+const MOON_LIT = 0.5
+const ambient = new THREE.AmbientLight(0x2a3550, AMBIENT_LIT)
+scene.add(ambient)
+const hemi = new THREE.HemisphereLight(0x2c3a5c, 0x070a10, HEMI_LIT)
 scene.add(hemi)
-const moon = new THREE.DirectionalLight(0x9db4e8, 0.5)
+const moon = new THREE.DirectionalLight(0x9db4e8, MOON_LIT)
 moon.position.set(-160, 220, 90)
 scene.add(moon)
 
@@ -105,6 +109,14 @@ let fear = 0
 let caughtTimer = 0
 let killer: Rex | null = null
 let footTimer = 0
+let darkness = 0
+let cover = 0
+const sense: PlayerSense = {
+  position: new THREE.Vector3(),
+  noiseRadius: 0,
+  cover: 0,
+  engineRunning: true,
+}
 let bestTime = Number(localStorage.getItem('dino-escape-best') ?? 0)
 
 const camPos = new THREE.Vector3()
@@ -201,6 +213,8 @@ const hudKph = $('kph')
 const hudDist = $('dist')
 const hudNeedle = $('needle')
 const hudAlert = $('alert')
+const engineBtn = $('engine')
+const engineLabel = $('engineState')
 
 function fmtTime(s: number) {
   const m = Math.floor(s / 60)
@@ -208,7 +222,7 @@ function fmtTime(s: number) {
   return `${m}:${sec.toString().padStart(2, '0')}`
 }
 
-function updateHud(locked: boolean) {
+function updateHud(locked: boolean, searching: boolean) {
   hudClock.textContent = fmtTime(elapsed)
   hudKph.textContent = Math.round(Math.abs(jeep.speed) * 3.6).toString()
   const dx = world.base.x - jeep.position.x
@@ -219,7 +233,27 @@ function updateHud(locked: boolean) {
   // target clockwise of the nose on screen is at yaw MINUS its world bearing.
   const bearing = jeep.yaw - Math.atan2(dx, dz)
   hudNeedle.style.transform = `rotate(${(bearing * 180) / Math.PI}deg)`
-  hudAlert.classList.toggle('on', locked)
+
+  // Shut down, the player cannot see much, so the HUD has to tell them whether
+  // the spot they picked is actually hiding them.
+  let status = ''
+  let tone = ''
+  if (!jeep.engineOn) {
+    const hidden = cover > 0.55
+    status = hidden ? 'Hidden · in cover' : 'Hidden · out in the open'
+    tone = hidden ? 'safe' : 'warn'
+  } else if (locked) {
+    status = 'Chased'
+    tone = 'bad'
+  } else if (searching) {
+    status = 'Something is hunting'
+    tone = 'warn'
+  }
+  hudAlert.textContent = status
+  hudAlert.className = status ? `on ${tone}` : ''
+
+  engineBtn.classList.toggle('off', !jeep.engineOn)
+  engineLabel.textContent = jeep.engineOn ? 'On' : 'Off'
 }
 
 // ---------------------------------------------------------------------------
@@ -256,16 +290,25 @@ function tick(dt: number, time: number) {
 
   // --- dinosaurs ---
   let locked = false
+  let searching = false
   let nearestLocked = Infinity
+  let nearestHunter = Infinity
+  cover = world.coverAt(jeep.position.x, jeep.position.z)
+  sense.position = jeep.position
+  sense.noiseRadius = jeep.noiseRadius
+  sense.cover = cover
+  sense.engineRunning = jeep.engineOn
   if (phase === 'playing' || phase === 'caught') {
     for (const rex of rexes) {
       const wasHunting = rex.state === 'chase' || rex.state === 'winded'
-      const ev = rex.update(dt, time, jeep.position, jeep.noiseRadius, rng)
+      const ev = rex.update(dt, time, sense, rng)
       const hunting = rex.state === 'chase' || rex.state === 'winded'
       if (hunting) {
         locked = true
         nearestLocked = Math.min(nearestLocked, rex.distance)
       }
+      if (rex.state === 'search') searching = true
+      if (hunting || rex.state === 'search') nearestHunter = Math.min(nearestHunter, rex.distance)
       if (ev === 'spotted' && !wasHunting) {
         sound.roar(clamp(1 - rex.distance / 140, 0, 1))
       }
@@ -285,16 +328,32 @@ function tick(dt: number, time: number) {
   const wantFear = locked ? smoothstep(FEAR_RANGE, 8, nearestLocked) : 0
   fear = damp(fear, phase === 'caught' ? 1 : wantFear, locked || phase === 'caught' ? 6 : 1.6, dt)
 
+  // --- going dark ---
+  // With the engine off the world drops away to almost nothing. The stars and
+  // the moon are unlit materials so they stay, and so do a rex's eyes, which is
+  // usually the only warning you get while sitting there.
+  darkness = damp(darkness, jeep.engineOn ? 0 : 1, 3.5, dt)
+  ambient.intensity = AMBIENT_LIT * lerp(1, 0.1, darkness)
+  hemi.intensity = HEMI_LIT * lerp(1, 0.1, darkness)
+  moon.intensity = MOON_LIT * lerp(1, 0.2, darkness)
+
   // --- audio ---
   if (phase === 'playing') {
-    const rev = clamp(Math.abs(jeep.speed) / JEEP_TOP_SPEED, 0, 1)
-    sound.engine(rev, controls.input.throttle ? 1 : 0)
-    sound.heartbeat(dt, fear)
-    if (locked && nearestLocked < 130) {
+    if (jeep.engineOn) {
+      const rev = clamp(Math.abs(jeep.speed) / JEEP_TOP_SPEED, 0, 1)
+      sound.engine(rev, controls.input.throttle ? 1 : 0)
+    } else {
+      sound.silenceEngine()
+    }
+    // Sitting in the dark, footsteps are most of what you have to go on, so
+    // they keep playing for a rex that is only hunting rather than chasing.
+    const tension = locked ? fear : smoothstep(90, 10, nearestHunter) * 0.8
+    sound.heartbeat(dt, tension)
+    if (nearestHunter < 130) {
       footTimer -= dt
       if (footTimer <= 0) {
-        footTimer = 0.34 + clamp(nearestLocked / 130, 0, 1) * 0.35
-        sound.footstep(clamp(1 - nearestLocked / 130, 0, 1))
+        footTimer = 0.34 + clamp(nearestHunter / 130, 0, 1) * 0.35
+        sound.footstep(clamp(1 - nearestHunter / 130, 0, 1))
       }
     }
   }
@@ -333,7 +392,7 @@ function tick(dt: number, time: number) {
 
   sky.position.copy(camera.position)
   world.update(dt, time, phase === 'won')
-  updateHud(locked)
+  updateHud(locked, searching)
 
   if (!skipRender) postfx.render(scene, camera, fear, time)
 }
@@ -402,9 +461,17 @@ for (const b of Array.from(document.querySelectorAll('.again'))) {
   })
 }
 
+controls.onEngineToggle = () => {
+  if (phase !== 'playing') return
+  const turningOn = !jeep.engineOn
+  jeep.setEngine(turningOn)
+  if (turningOn) sound.starter()
+  else sound.silenceEngine()
+}
+
 $('ctlHint').textContent = controls.isTouch
-  ? 'Left thumb: go and brake. Right thumb: the wheel.'
-  : 'W / S to drive, A / D to steer. Arrow keys work too.'
+  ? 'Left thumb: go, brake, and the engine switch. Right thumb: the wheel.'
+  : 'W / S to drive, A / D to steer, E to cut the engine. Arrow keys work too.'
 
 /**
  * Aim for a usable horizontal view. A fixed vertical FOV on a tall phone
@@ -464,6 +531,8 @@ if (import.meta.env.DEV) {
         trees: world?.trees.length,
         speed: jeep?.speed,
         baseDist: world ? Math.hypot(world.base.x - jeep.position.x, world.base.z - jeep.position.z) : -1,
+        cover: +cover.toFixed(2),
+        engineOn: jeep?.engineOn,
         rexes: rexes.map((r) => ({
           state: r.state,
           d: Math.round(r.distance),
@@ -480,6 +549,9 @@ if (import.meta.env.DEV) {
       drive(steer: number, throttle: boolean, brake = false) {
         controls.override = true
         Object.assign(controls.input, { steer, throttle, brake })
+      },
+      engine(on: boolean) {
+        jeep.setEngine(on)
       },
       manual() {
         controls.override = false
@@ -498,7 +570,15 @@ if (import.meta.env.DEV) {
         skipRender = false
       },
       newGame,
-      three: { scene, camera, renderer, postfx, get jeep() { return jeep }, get world() { return world } },
+      three: {
+        scene,
+        camera,
+        renderer,
+        postfx,
+        get jeep() { return jeep },
+        get world() { return world },
+        get rexes() { return rexes },
+      },
     },
   })
 }

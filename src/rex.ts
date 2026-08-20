@@ -5,7 +5,8 @@ import { Rng, angleDelta, clamp, damp, lerp } from './rng'
 
 /** The headline number: a locked-on rex runs 1.3x the jeep's top speed. */
 export const CHASE_SPEED = JEEP_TOP_SPEED * 1.3
-const PATROL_SPEED = 3.4
+/** A heavy animal ambling, not jogging: slow, but plainly covering ground. */
+const PATROL_SPEED = 1.7
 const INVESTIGATE_SPEED = 7.5
 /**
  * A sprint is faster than you can drive, so the escape has to come from the
@@ -581,7 +582,11 @@ export class Rex {
     wantSpeed *= 1 - clamp(Math.abs(turn / dt) / turnRate, 0, 1) * 0.22
     // Twelve metres of animal pays more for thick timber than a jeep does.
     // In the open it runs you down; in a dense stand you can hold it off.
-    wantSpeed *= 1 - this.clutter() * 0.14
+    // Only when it is actually driving hard, though - an ambling one picks its
+    // way through trees perfectly well, and slowing it further just looked stuck.
+    if (this.state === 'chase' || this.state === 'winded') {
+      wantSpeed *= 1 - this.clutter() * 0.14
+    }
     this.speed = damp(this.speed, wantSpeed, 2.2, dt)
 
     let nx = this.position.x + Math.sin(this.yaw) * this.speed * dt
@@ -635,7 +640,9 @@ export class Rex {
     this.root.rotation.y = this.yaw
 
     const running = this.state === 'chase'
-    const moving = clamp(this.speed / 6, 0, 1)
+    // Saturates at a walking pace, so an ambling rex still rolls and bobs
+    // properly instead of gliding along stiff-legged.
+    const moving = clamp(this.speed / 2.6, 0, 1)
     // stride frequency scales with speed, but a sprint has a longer stride
     const strideLen = running ? 7.4 : 4.4
     this.gait += (this.speed / strideLen) * dt

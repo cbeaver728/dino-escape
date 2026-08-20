@@ -1,7 +1,7 @@
 # Dino Escape
 
 A 3D night-driving survival game. You are in a jeep, somewhere in a forest, in the dark.
-Six T-Rexes are out there. The base with the helipad is a long way off. Go.
+Nine T-Rexes are out there. The base with the helipad is a long way off. Go.
 
 **Play: https://cbeaver728.github.io/dino-escape/**
 
@@ -51,7 +51,7 @@ stopped (the worst case — coasting in adds distance):
 | open ground | 0/6 | 0/6 | 0/6 |
 
 Sitting there is its own problem: you cannot see, you cannot move, the other
-five are still wandering, and restarting fires a very loud starter motor. In the
+eight are still wandering, and restarting fires a very loud starter motor. In the
 dark the only warning you get is a pair of amber eyes and the footsteps.
 
 Break contact for long enough and it loses interest and goes back to wandering.

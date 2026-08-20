@@ -7,7 +7,7 @@ import { Postfx } from './postfx'
 import { Sound } from './audio'
 import { Rng, clamp, damp, lerp, smoothstep } from './rng'
 
-const REX_COUNT = 6
+const REX_COUNT = 9
 /** How far out a locked-on rex starts closing the screen down. */
 const FEAR_RANGE = 92
 
@@ -145,13 +145,13 @@ function buildWorld(seed: number) {
   scene.add(jeep.group)
   jeep.reset(world.spawn, world.spawnYaw)
 
-  // Half the pack is seeded loosely along the route to the base so a run always
-  // runs into something; the rest are scattered, and all of them wander from there.
+  // Three are seeded loosely along the route to the base so a run always meets
+  // something; the rest are scattered, and all of them wander from there.
   const routeX = world.base.x - world.spawn.x
   const routeZ = world.base.z - world.spawn.z
   for (let i = 0; i < REX_COUNT; i++) {
     const rex = new Rex(world, rng)
-    const onRoute = i < 2
+    const onRoute = i < 3
     let placed = false
     for (let t = 0; t < 400 && !placed; t++) {
       let x: number

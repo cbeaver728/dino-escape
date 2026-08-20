@@ -3,7 +3,7 @@
 A 3D night-driving survival game. You are in a jeep, somewhere in a forest, in the dark.
 Six T-Rexes are out there. The base with the helipad is a long way off. Go.
 
-**Play: https://cbeaver728.github.io/Dino-Escape/**
+**Play: https://cbeaver728.github.io/dino-escape/**
 
 ## The idea
 

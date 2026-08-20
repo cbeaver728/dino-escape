@@ -215,7 +215,9 @@ function updateHud(locked: boolean) {
   const dz = world.base.z - jeep.position.z
   const dist = Math.hypot(dx, dz)
   hudDist.textContent = dist > 999 ? '1k+' : `${Math.round(dist)}m`
-  const bearing = Math.atan2(dx, dz) - jeep.yaw
+  // Same handedness catch as the steering: the driver's right is -X, so a
+  // target clockwise of the nose on screen is at yaw MINUS its world bearing.
+  const bearing = jeep.yaw - Math.atan2(dx, dz)
   hudNeedle.style.transform = `rotate(${(bearing * 180) / Math.PI}deg)`
   hudAlert.classList.toggle('on', locked)
 }

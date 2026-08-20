@@ -116,4 +116,5 @@ The numbers that decide how the game feels:
 | `SPRINT_SECONDS` / `WINDED_SECONDS` | `rex.ts` | The sprint-and-recover cycle. A clean run nets you ground over one full cycle; that is the whole escape. |
 | `LOSE_DISTANCE` | `rex.ts` | How far ahead you must get to break contact. |
 | `REX_COUNT` | `main.ts` | How crowded the map is. |
+| `MIN_TREE_GAP` | `world.ts` | Closest two trunks may stand - how open the woods feel. |
 | `MIN_CLEAR_FRACTION` | `postfx.ts` | The 60% visibility floor. |

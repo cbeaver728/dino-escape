@@ -174,8 +174,11 @@ export class Jeep {
     this.speed = clamp(this.speed, -REVERSE_TOP_SPEED, speedCap)
 
     // --- bicycle-model heading ---
+    // Heading is `forward = (sin yaw, cos yaw)`, and three.js is right-handed,
+    // so from behind the wheel the driver's right is -X: turning right means
+    // yaw goes DOWN. Positive steer is right, hence the minus.
     if (Math.abs(this.speed) > 0.05) {
-      this.yaw += (this.speed / WHEELBASE) * Math.tan(this.steerAngle) * dt
+      this.yaw -= (this.speed / WHEELBASE) * Math.tan(this.steerAngle) * dt
     }
 
     // --- integrate + collide ---
@@ -226,9 +229,13 @@ export class Jeep {
     this.group.position.copy(this.position)
     this.group.rotation.y = this.yaw
 
+    // Sit the body on the ground: pitch from how much the surface normal leans
+    // fore/aft, roll from how much it leans across. Both signs follow the same
+    // right-handed convention as the steering - nose up is a positive rotation
+    // about X, and the driver's right is -X.
     const n = this.world.normalAt(nx, nz, _n)
-    const pitch = Math.asin(clamp(-(n.x * Math.sin(this.yaw) + n.z * Math.cos(this.yaw)), -1, 1))
-    const roll = Math.asin(clamp(n.x * Math.cos(this.yaw) - n.z * Math.sin(this.yaw), -1, 1))
+    const pitch = Math.asin(clamp(n.x * Math.sin(this.yaw) + n.z * Math.cos(this.yaw), -1, 1))
+    const roll = Math.asin(clamp(n.z * Math.sin(this.yaw) - n.x * Math.cos(this.yaw), -1, 1))
     this.bumpPhase += Math.abs(this.speed) * dt * 3
     const jitter = Math.sin(this.bumpPhase) * 0.012 * clamp(Math.abs(this.speed) / 10, 0, 1)
     this.bodyTilt.rotation.x = damp(this.bodyTilt.rotation.x, pitch + jitter, 8, dt)

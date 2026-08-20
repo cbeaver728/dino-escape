@@ -516,7 +516,7 @@ export class Rex {
       const y = this.yaw + off
       const x = this.position.x + Math.sin(y) * 9
       const z = this.position.z + Math.cos(y) * 9
-      if (this.world.treeHit(x, z, 3.4)) n++
+      if (this.world.treeHit(x, z, 5)) n++
     }
     return n
   }

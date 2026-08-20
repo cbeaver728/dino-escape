@@ -14,8 +14,9 @@ const BASE_PLATEAU = 46
 
 /** Trunk collision radius, and the smallest gap any two trunks may leave. */
 export const TRUNK_RADIUS = 0.95
-/** Jeep body radius 1.55 + two trunk radii, plus clearance to squeeze through. */
-const MIN_TREE_GAP = 5.7
+/** Closest two trunks may ever stand. Well clear of the jeep, so the forest
+ * reads as woodland you drive through rather than a fence. */
+const MIN_TREE_GAP = 9
 
 export interface Tree {
   x: number
@@ -108,6 +109,7 @@ export class World {
     const terrainNoise = new Noise2D(rng)
     const forestNoise = new Noise2D(rng)
     const detailNoise = new Noise2D(rng)
+    const groveNoise = new Noise2D(rng)
 
     this.heights = new Float32Array(VERTS * VERTS)
 
@@ -157,7 +159,7 @@ export class World {
     this.spawnYaw = Math.atan2(bx - sx, bz - sz) + rng.range(-0.9, 0.9)
 
     // ---- 4. scatter the forest ------------------------------------------
-    this.plantForest(rng, forestNoise)
+    this.plantForest(rng, forestNoise, groveNoise)
     this.grid = new TreeGrid(this.trees)
 
     // ---- 5. meshes -------------------------------------------------------
@@ -367,10 +369,9 @@ export class World {
     return m / 7
   }
 
-  private plantForest(rng: Rng, forest: Noise2D) {
-    const step = 5.4
+  private plantForest(rng: Rng, forest: Noise2D, grove: Noise2D) {
+    const step = 6.0
     const jitter = step * 0.6
-    const nScale = 1 / 190
     const clearBase = BASE_PLATEAU + 8
 
     // Thickets are allowed to be dense, but never so dense that the jeep can
@@ -407,10 +408,16 @@ export class World {
         if (Math.hypot(px - this.base.x, pz - this.base.z) < clearBase) continue
         if (Math.hypot(px - this.spawn.x, pz - this.spawn.z) < 11) continue
 
-        const density = forest.fbm(px * nScale, pz * nScale, 4)
-        // dense stands, thin scrub, and genuine open fields
-        const p = smoothstep(0.38, 0.7, density)
-        if (rng.next() > p * 0.99 + 0.02) continue
+        // Two scales of noise. The broad one decides where forest exists at
+        // all, with a sharp edge so fields are genuinely empty rather than
+        // sprinkled with stragglers; the fine one breaks that forest into
+        // groves with clearings between them.
+        const region = smoothstep(0.44, 0.56, forest.fbm(px / 330, pz / 330, 3))
+        if (region <= 0) continue
+        // No floor under the grove term on purpose: where it bottoms out the
+        // glade is properly empty, instead of thin scrub filling every gap.
+        const groves = smoothstep(0.42, 0.6, grove.fbm(px / 74, pz / 74, 3))
+        if (rng.next() > region * groves) continue
         if (tooClose(px, pz)) continue
         this.trees.push({ x: px, z: pz, y, r: TRUNK_RADIUS })
       }

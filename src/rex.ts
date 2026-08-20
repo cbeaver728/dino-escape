@@ -6,7 +6,7 @@ import { Rng, angleDelta, clamp, damp, lerp } from './rng'
 /** The headline number: a locked-on rex runs 1.3x the jeep's top speed. */
 export const CHASE_SPEED = JEEP_TOP_SPEED * 1.3
 /** A heavy animal ambling, not jogging: slow, but plainly covering ground. */
-const PATROL_SPEED = 1.7
+const PATROL_SPEED = 2.2
 const INVESTIGATE_SPEED = 7.5
 /**
  * A sprint is faster than you can drive, so the escape has to come from the
@@ -39,7 +39,25 @@ const SEARCH_SECONDS = 14
 const SIGHT_EXPOSED = 46
 const SIGHT_HIDDEN = 6.5
 
-export type RexState = 'patrol' | 'alert' | 'chase' | 'winded' | 'search'
+/** How close a herd has to be before a wandering rex takes an interest. Must
+ * exceed the deer's own alarm range, or they bolt before it ever commits. */
+const DEER_NOTICE = 95
+/**
+ * Slower than the deer, so these runs never end in a kill - it is a
+ * distraction, not a hunt. A rex busy with deer is one not looking for you.
+ */
+const DEER_CHASE_SPEED = 12
+const DEER_GIVE_UP = [5, 10] as const
+/** Odds a rex bothers at all; the rest of the time it just watches them go. */
+const DEER_INTEREST = 0.5
+const DEER_COOLDOWN = 14
+
+export type RexState = 'patrol' | 'alert' | 'chase' | 'winded' | 'search' | 'deer'
+
+/** Something a rex might run at instead of you. Structural: Herd satisfies it. */
+export interface Quarry {
+  centre: THREE.Vector3
+}
 
 /** What the player is giving away this tick. */
 export interface PlayerSense {
@@ -266,6 +284,9 @@ export class Rex {
   private searchAnchor = new THREE.Vector3()
   private searchPoint = new THREE.Vector3()
   private rangeAtLoss = 0
+  private deerTarget: Quarry | null = null
+  private deerFor = 0
+  private deerCooldown = 0
   private searchFor = 0
 
   private gait = 0
@@ -419,6 +440,8 @@ export class Rex {
     this.lastKnown.copy(this.position)
     this.searchPoint.copy(this.position)
     this.searchAnchor.copy(this.position)
+    this.deerTarget = null
+    this.deerCooldown = 0
     this.root.position.copy(this.position)
     this.root.rotation.y = yaw
   }
@@ -426,7 +449,13 @@ export class Rex {
   /**
    * @returns 'spotted' on the tick it locks on, 'caught' if it reaches the jeep.
    */
-  update(dt: number, time: number, sense: PlayerSense, rng: Rng): 'none' | 'spotted' | 'caught' {
+  update(
+    dt: number,
+    time: number,
+    sense: PlayerSense,
+    herds: Quarry[],
+    rng: Rng,
+  ): 'none' | 'spotted' | 'caught' {
     const dx = sense.position.x - this.position.x
     const dz = sense.position.z - this.position.z
     this.distance = Math.hypot(dx, dz)
@@ -449,10 +478,11 @@ export class Rex {
     }
 
     const hunting = this.state === 'chase' || this.state === 'winded'
-    if (this.state === 'patrol' || this.state === 'alert') {
+    if (this.state === 'patrol' || this.state === 'alert' || this.state === 'deer') {
       if (detected) {
         this.reaction += dt
         this.state = 'alert'
+        this.deerTarget = null
         if (this.reaction > 0.55) {
           this.state = 'chase'
           event = 'spotted'
@@ -460,6 +490,7 @@ export class Rex {
       } else {
         this.reaction = Math.max(0, this.reaction - dt * 0.8)
         if (this.state === 'alert' && this.reaction <= 0) this.state = 'patrol'
+        this.considerDeer(dt, herds, rng)
       }
     } else if (hunting) {
       // Break contact - by outrunning it or by going dark - and it drops to
@@ -543,6 +574,13 @@ export class Rex {
       )
       wantSpeed = INVESTIGATE_SPEED * 0.7
       turnRate = 1.6
+    } else if (this.state === 'deer' && this.deerTarget) {
+      desiredYaw = Math.atan2(
+        this.deerTarget.centre.x - this.position.x,
+        this.deerTarget.centre.z - this.position.z,
+      )
+      wantSpeed = DEER_CHASE_SPEED
+      turnRate = 1.3
     } else {
       this.wanderTimer -= dt
       if (this.wanderTimer <= 0) {
@@ -599,6 +637,41 @@ export class Rex {
 
     this.pose(dt, time)
     return event
+  }
+
+  /**
+   * Wandering rexes take a run at any herd that strays close, about half the
+   * time, and pack it in after a few seconds because they cannot catch deer.
+   * It is a distraction that buys the player room, and it is what makes a
+   * bolting herd worth reading.
+   */
+  private considerDeer(dt: number, herds: Quarry[], rng: Rng) {
+    this.deerCooldown = Math.max(0, this.deerCooldown - dt)
+
+    if (this.state === 'deer') {
+      this.deerFor -= dt
+      const gone =
+        this.deerFor <= 0 ||
+        !this.deerTarget ||
+        this.position.distanceTo(this.deerTarget.centre) > DEER_NOTICE * 2
+      if (gone) {
+        this.state = 'patrol'
+        this.deerTarget = null
+        this.deerCooldown = DEER_COOLDOWN
+      }
+      return
+    }
+
+    if (this.state !== 'patrol' || this.deerCooldown > 0) return
+    for (const h of herds) {
+      if (this.position.distanceTo(h.centre) > DEER_NOTICE) continue
+      this.deerCooldown = DEER_COOLDOWN
+      if (rng.next() > DEER_INTEREST) return // watched them go
+      this.state = 'deer'
+      this.deerTarget = h
+      this.deerFor = rng.range(DEER_GIVE_UP[0], DEER_GIVE_UP[1])
+      return
+    }
   }
 
   /**

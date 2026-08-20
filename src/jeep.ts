@@ -243,6 +243,13 @@ export class Jeep {
       this.yaw += (delta >= 0 ? 1 : -1) * Math.min(Math.abs(delta), nudge)
     }
 
+    // The base fence is solid: you go in through the gate or not at all.
+    if (this.world.fenceBlock(nx, nz, BODY_RADIUS, _fence)) {
+      nx = _fence.x
+      nz = _fence.y
+      this.speed *= 0.35
+    }
+
     // Scrape along the boundary hills rather than stopping dead: the clamp and
     // the speed penalty have to use the same limit or the jeep gets pinned here.
     if (!this.world.inBounds(nx, nz)) {
@@ -299,3 +306,4 @@ export class Jeep {
 }
 
 const _n = new THREE.Vector3()
+const _fence = new THREE.Vector2()

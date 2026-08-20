@@ -1,7 +1,7 @@
 # Dino Escape
 
 A 3D night-driving survival game. You are in a jeep, somewhere in a forest, in the dark.
-Nine T-Rexes are out there. The base with the helipad is a long way off. Go.
+Thirteen T-Rexes are out there. The base with the helipad is a long way off. Go.
 
 **Play: https://cbeaver728.github.io/dino-escape/**
 
@@ -29,6 +29,12 @@ a straight line. What you can do:
   exactly. Get this right and it casts around the wrong patch of forest, gives
   up, and wanders off.
 - **Water.** It slows you down. It slows them down more.
+- **Read the deer.** Herds graze quietly until a rex comes within 78m, then they
+  bolt with their white tails flared. They react to something you cannot yet see
+  or hear, so a herd breaking cover tells you a rex is out there and roughly
+  where it came from. A wandering rex takes a run at a nearby herd about half
+  the time it notices one, and gives up after five to ten seconds because deer
+  are faster than it is — and a rex busy with deer is not looking for you.
 
 Going dark is a real gamble, not a get-out-of-jail card, because two things have
 to be true at once:
@@ -51,8 +57,8 @@ stopped (the worst case — coasting in adds distance):
 | open ground | 0/6 | 0/6 | 0/6 |
 
 Sitting there is its own problem: you cannot see, you cannot move, the other
-eight are still wandering, and restarting fires a very loud starter motor. In the
-dark the only warning you get is a pair of amber eyes and the footsteps.
+twelve are still wandering, and restarting fires a very loud starter motor. In
+the dark the only warning you get is a pair of amber eyes and the footsteps.
 
 Break contact for long enough and it loses interest and goes back to wandering.
 
@@ -61,7 +67,17 @@ the closer it gets the less you can see. It never takes more than 40% of the
 screen — a clear disc covering at least 60% of the view always remains, whatever
 the aspect ratio of your screen.
 
+The base is **fenced**, and the fence is solid. There is one way in, marked by
+two amber lamps — driving at the wall just bounces you off it, which is a bad
+place to be with something behind you. The gate always faces back the way you
+came from, so a straight run from your start puts you in front of it.
+
 Reach the helipad and you live.
+
+A scripted driver — one that goes for the base and swerves from anything
+chasing, but never uses the engine kill — gets there in **about 1 run in 4**
+(11 of 44 generated maps, 95% interval roughly 12–38%). A person has the hiding
+mechanic on top of that.
 
 ## Controls
 
@@ -97,7 +113,8 @@ No art assets, no model files, no audio files — everything is generated at run
 | --- | --- |
 | `src/world.ts` | Map generation: heightmap terrain, carved rivers, forest scatter, the base and helipad. Also owns terrain height/water queries and tree collision. |
 | `src/jeep.ts` | The jeep model and its driving physics — bicycle-model steering, slope and water drag, tree collisions. |
-| `src/rex.ts` | The T-Rex: a jointed skeleton with walk and sprint gaits, plus the hearing, chasing, and stamina behaviour. |
+| `src/rex.ts` | The T-Rex: a jointed skeleton with walk and sprint gaits, plus the hearing, chasing, stamina and deer-baiting behaviour. |
+| `src/deer.ts` | Herds: formation wandering, panic flight, and the white tail flag that makes them readable. |
 | `src/postfx.ts` | The closing-in vignette, as a full-screen shader pass. |
 | `src/controls.ts` | Touch pedals and wheel, and the keyboard fallback. |
 | `src/audio.ts` | Synthesised engine, roars, footsteps and heartbeat via WebAudio. |
@@ -148,6 +165,10 @@ The numbers that decide how the game feels:
 | `SIGHT_EXPOSED` / `SIGHT_HIDDEN` | `rex.ts` | Eyesight against a shut-down jeep, open versus under cover. |
 | `SEARCH_SECONDS` | `rex.ts` | How long it hunts before wandering off. |
 | `COVER_TREES` | `world.ts` | Trees needed nearby to count as properly hidden. |
+| `PATROL_SPEED` | `rex.ts` | Wandering pace - drives how often you blunder into one. |
+| `DEER_INTEREST` / `DEER_GIVE_UP` | `rex.ts` | Odds a rex chases a herd, and for how long. |
+| `REX_ALARM` | `deer.ts` | How far off a rex has to be before the herd bolts. |
+| `HERD_COUNT` | `main.ts` | How much wildlife there is to read. |
 | `REX_COUNT` | `main.ts` | How crowded the map is. |
 | `MIN_TREE_GAP` | `world.ts` | Closest two trunks may stand - how open the woods feel. |
 | `MIN_CLEAR_FRACTION` | `postfx.ts` | The 60% visibility floor. |

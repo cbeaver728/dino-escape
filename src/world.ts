@@ -38,7 +38,13 @@ export interface BaseInfo {
   padRadius: number
   /** Yaw the fence opening faces. */
   gateYaw: number
+  fenceRadius: number
 }
+
+/** Visual gap in the fence, as a half-angle either side of `gateYaw`. */
+const GATE_HALF_ANGLE = 0.36
+/** Drivable gap, kept just inside the visual one so you never clip a post. */
+const GATE_CLEAR_ANGLE = 0.32
 
 /** Uniform-grid bucketing so tree collision stays O(1) per query. */
 class TreeGrid {
@@ -178,6 +184,7 @@ export class World {
       pad: new THREE.Vector3(bx, baseY, bz),
       padRadius: 11,
       gateYaw: Math.atan2(sx - bx, sz - bz),
+      fenceRadius: BASE_CLEARING - 2,
     }
 
     this.spawn = new THREE.Vector3(sx, this.heightAt(sx, sz), sz)
@@ -226,6 +233,32 @@ export class World {
 
   treeHit(x: number, z: number, r: number): Tree | null {
     return this.grid.hit(x, z, r)
+  }
+
+  /**
+   * Keeps a circle of radius `r` on whichever side of the perimeter fence it
+   * started, unless it is lined up with the gate. Writes the corrected centre
+   * into `out` and returns true if it had to move it.
+   *
+   * The fence is a ring, so this only needs the radial distance: shove the
+   * circle back out to a clean standoff on the side it approached from.
+   */
+  fenceBlock(x: number, z: number, r: number, out: THREE.Vector2): boolean {
+    const dx = x - this.base.x
+    const dz = z - this.base.z
+    const d = Math.hypot(dx, dz)
+    const R = this.base.fenceRadius
+    if (Math.abs(d - R) > r || d < 0.001) return false
+    // lined up with the opening: drive straight through
+    const bearing = Math.atan2(dx, dz)
+    let delta = (bearing - this.base.gateYaw) % (Math.PI * 2)
+    if (delta > Math.PI) delta -= Math.PI * 2
+    if (delta < -Math.PI) delta += Math.PI * 2
+    if (Math.abs(delta) < GATE_CLEAR_ANGLE) return false
+
+    const target = d > R ? R + r : R - r
+    out.set(this.base.x + (dx / d) * target, this.base.z + (dz / d) * target)
+    return true
   }
 
   /**
@@ -733,12 +766,12 @@ export class World {
     const postGeo = new THREE.BoxGeometry(0.5, 4.6, 0.5)
     const railGeo = new THREE.BoxGeometry(0.16, 0.16, 4.4)
     this.disposables.push(postGeo, railGeo)
-    const R = BASE_CLEARING - 2
+    const R = this.base.fenceRadius
     const steps = 64
     for (let i = 0; i < steps; i++) {
       const a = (i / steps) * Math.PI * 2
       // gate opening points back toward the player's approach (local +Z)
-      if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a)) - Math.PI / 2) < 0.36) continue
+      if (Math.abs(Math.atan2(Math.sin(a), Math.cos(a)) - Math.PI / 2) < GATE_HALF_ANGLE) continue
       const px = Math.cos(a) * R
       const pz = Math.sin(a) * R
       const post = new THREE.Mesh(postGeo, metal)
@@ -752,6 +785,29 @@ export class World {
         g.add(rail)
       }
     }
+
+    // --- gate markers ---
+    // The fence is solid, so the way in has to be findable at night without
+    // driving the whole perimeter with something behind you.
+    const gatePostGeo = new THREE.CylinderGeometry(0.36, 0.46, 7, 6)
+    const gateLampGeo = new THREE.SphereGeometry(0.85, 10, 8)
+    const gateGlow = new THREE.MeshBasicMaterial({ color: 0xffb02e })
+    this.disposables.push(gatePostGeo, gateLampGeo, gateGlow)
+    for (const side of [-1, 1]) {
+      const a = Math.PI / 2 + side * GATE_HALF_ANGLE
+      const px = Math.cos(a) * R
+      const pz = Math.sin(a) * R
+      const gy = this.localGround(px, pz)
+      const post = new THREE.Mesh(gatePostGeo, metal)
+      post.position.set(px, gy + 3.5, pz)
+      g.add(post)
+      const lamp = new THREE.Mesh(gateLampGeo, gateGlow)
+      lamp.position.set(px, gy + 7.4, pz)
+      g.add(lamp)
+    }
+    const gateLight = new THREE.PointLight(0xffb02e, 900, 70, 2)
+    gateLight.position.set(Math.cos(Math.PI / 2) * R, 7, Math.sin(Math.PI / 2) * R)
+    g.add(gateLight)
 
     // --- floodlights ---
     const poleGeo = new THREE.CylinderGeometry(0.3, 0.42, 13, 6)

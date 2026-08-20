@@ -2,12 +2,15 @@ import * as THREE from 'three'
 import { World, HALF, WATER_LEVEL } from './world'
 import { Jeep, JEEP_TOP_SPEED } from './jeep'
 import { Rex, PlayerSense } from './rex'
+import { Herd, spawnHerds } from './deer'
 import { Controls } from './controls'
 import { Postfx } from './postfx'
 import { Sound } from './audio'
 import { Rng, clamp, damp, lerp, smoothstep } from './rng'
 
-const REX_COUNT = 9
+const REX_COUNT = 13
+/** Herds of deer, purely as an early-warning system for the player. */
+const HERD_COUNT = 7
 /** How far out a locked-on rex starts closing the screen down. */
 const FEAR_RANGE = 92
 
@@ -102,6 +105,7 @@ let world!: World
 let jeep!: Jeep
 let ready = false
 let rexes: Rex[] = []
+let herds: Herd[] = []
 let rng = new Rng(1)
 let phase: Phase = 'menu'
 let elapsed = 0
@@ -135,6 +139,11 @@ function buildWorld(seed: number) {
     r.dispose()
   }
   rexes = []
+  for (const h of herds) {
+    scene.remove(h.group)
+    h.dispose()
+  }
+  herds = []
 
   rng = new Rng(seed)
   world = new World(seed)
@@ -145,7 +154,7 @@ function buildWorld(seed: number) {
   scene.add(jeep.group)
   jeep.reset(world.spawn, world.spawnYaw)
 
-  // Three are seeded loosely along the route to the base so a run always meets
+  // Four are seeded loosely along the route to the base so a run always meets
   // something; the rest are scattered, and all of them wander from there.
   const routeX = world.base.x - world.spawn.x
   const routeZ = world.base.z - world.spawn.z
@@ -176,6 +185,9 @@ function buildWorld(seed: number) {
     scene.add(rex.root)
     rexes.push(rex)
   }
+
+  herds = spawnHerds(world, rng, HERD_COUNT)
+  for (const h of herds) scene.add(h.group)
 
   ready = true
   // snap the camera behind the jeep so the first frame is not a swoop
@@ -299,9 +311,14 @@ function tick(dt: number, time: number) {
   sense.cover = cover
   sense.engineRunning = jeep.engineOn
   if (phase === 'playing' || phase === 'caught') {
+    for (const herd of herds) {
+      herd.update(dt, rexes, jeep.position, rng)
+      // fog swallows everything past ~120m, so drawing them further is waste
+      herd.setVisible(herd.centre.distanceTo(jeep.position) < 150)
+    }
     for (const rex of rexes) {
       const wasHunting = rex.state === 'chase' || rex.state === 'winded'
-      const ev = rex.update(dt, time, sense, rng)
+      const ev = rex.update(dt, time, sense, herds, rng)
       const hunting = rex.state === 'chase' || rex.state === 'winded'
       if (hunting) {
         locked = true
@@ -320,7 +337,7 @@ function tick(dt: number, time: number) {
         sound.silenceEngine()
         sound.roar(1)
       }
-      rex.root.visible = rex.distance < 280
+      rex.root.visible = rex.distance < 200
     }
   }
 
@@ -520,6 +537,10 @@ if (import.meta.env.DEV) {
         z: Math.round(jeep?.position.z),
         yaw: jeep?.yaw,
         baseBearing: world ? Math.atan2(world.base.x - jeep.position.x, world.base.z - jeep.position.z) : 0,
+        gateYaw: world?.base.gateYaw,
+        fenceRadius: world?.base.fenceRadius,
+        baseX: world?.base.x,
+        baseZ: world?.base.z,
         depth: world ? +world.waterDepth(jeep.position.x, jeep.position.z).toFixed(2) : 0,
         slope: world
           ? +(
@@ -578,6 +599,7 @@ if (import.meta.env.DEV) {
         get jeep() { return jeep },
         get world() { return world },
         get rexes() { return rexes },
+        get herds() { return herds },
       },
     },
   })

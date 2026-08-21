@@ -86,7 +86,7 @@ difficulty, since they are not comparable across them.
 | Easy | 5 | 1 | 61% |
 | Medium | 10 | 3 | 35% |
 | Hard | 30 | 8 | 5% |
-| Legend | 45 | 11 | 5-10% |
+| Legend | 40 | 11 | 5-10% |
 
 The win rates are for a bot that drives for the base and swerves from anything
 chasing it but never uses the engine kill, over 18-20 generated maps each. At
@@ -229,7 +229,12 @@ than the one this was written on, so a few things are deliberate:
 - **Distant rexes are not animated.** Past `VISIBLE_RANGE` (150 m, comfortably
   beyond what the fog lets through) the rig is hidden and the joints are left
   alone. The AI still runs, so behaviour is identical; only the posing stops.
-  Measured at 3.0 ms -> 1.4 ms per frame with 45 rexes on screen versus culled.
+  Measured at 3.0 ms -> 1.4 ms per frame with 40-odd rexes on screen versus
+  culled. Visibility has exactly one owner: live play culls on fog range, the
+  replay sets its own wider limits, and `pose()` only ever honours the flag it
+  is given. It decided for itself once, which quietly overrode the replay and
+  left the overhead camera - the one view whose whole job is showing you where
+  the rex came from - with nothing in it.
 - **Nothing unbounded reaches the shader.** `performance.now()` climbs for as
   long as the tab is open, and both of its uses in the vignette are periodic, so
   the wrap happens on the CPU in float64. The grain hash is also sin-free: the

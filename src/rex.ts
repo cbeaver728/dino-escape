@@ -484,6 +484,16 @@ export class Rex {
   /**
    * @returns 'spotted' on the tick it locks on, 'caught' if it reaches the jeep.
    */
+  /**
+   * Hiding a rig skips its draw and, just as importantly, the per-frame walk
+   * over its fifty-odd joints - `visible` alone would only stop the draw.
+   */
+  setVisible(v: boolean) {
+    if (this.root.visible === v) return
+    this.root.visible = v
+    this.root.matrixWorldAutoUpdate = v
+  }
+
   update(
     dt: number,
     time: number,
@@ -668,6 +678,7 @@ export class Rex {
 
     if (this.distance < CATCH_DISTANCE) event = 'caught'
 
+    this.setVisible(this.distance < VISIBLE_RANGE)
     this.pose(dt, time)
     return event
   }
@@ -769,18 +780,13 @@ export class Rex {
     this.root.position.copy(this.position)
     this.root.rotation.y = this.yaw
 
-    // The body still gets placed above, so a rex that comes back into range is
-    // already in the right spot; only the joints wait. `gait` keeps winding so
-    // the stride does not visibly jump when it reappears.
-    const seen = this.distance < VISIBLE_RANGE
-    if (this.root.visible !== seen) {
-      this.root.visible = seen
-      // `visible` alone only skips drawing; three still walks the whole subtree
-      // every frame to refresh world matrices. Switching this off skips the
-      // fifty-odd joints too, which is where the real saving is.
-      this.root.matrixWorldAutoUpdate = seen
-    }
-    if (!seen) {
+    // Whoever owns the rex decides whether it can be seen: live play culls on
+    // fog range, the replay uses its own wider limits so you can watch a chase
+    // develop from above. All this does is skip the joint work for a rig that
+    // is not going to be drawn. The body is still placed above, so one coming
+    // back into view is already in the right spot, and `gait` keeps winding so
+    // the stride does not jump when it reappears.
+    if (!this.root.visible) {
       this.gait += (this.speed / (this.state === 'chase' ? 7.4 : 4.4)) * dt
       return
     }

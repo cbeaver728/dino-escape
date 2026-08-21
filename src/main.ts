@@ -19,9 +19,9 @@ const DIFFICULTIES = [
   { name: 'Medium', rexes: 10, onRoute: 3, winded: 1 },
   { name: 'Hard', rexes: 30, onRoute: 8, winded: 1 },
   // they get their breath back far quicker, so a blown sprint buys you little
-  { name: 'Legend', rexes: 45, onRoute: 11, winded: 0.55 },
+  { name: 'Legend', rexes: 40, onRoute: 11, winded: 0.55 },
 ]
-const COUNT_WORDS: Record<number, string> = { 5: 'Five', 10: 'Ten', 30: 'Thirty', 45: 'Forty-five' }
+const COUNT_WORDS: Record<number, string> = { 5: 'Five', 10: 'Ten', 30: 'Thirty', 40: 'Forty' }
 /** How far either side of the straight run to the base a seeded rex may sit. */
 const ROUTE_SPREAD = 80
 
@@ -332,8 +332,15 @@ function applyFrame(dt: number, time: number) {
   for (let i = 0; i < rexes.length; i++) {
     const o = recording.rexAt(i)
     const state = REX_STATES[Math.round(scratch[o + 4])] ?? 'patrol'
+    // Set before posing, not after: the rig skips its joint work while hidden,
+    // so it has to know it is on screen in time to actually strike a pose. The
+    // overhead view reaches much further than play does - seeing where the thing
+    // came from is the whole point of it.
+    rexes[i].setVisible(
+      Math.hypot(scratch[o] - jeep.position.x, scratch[o + 1] - jeep.position.z) <
+        (replayView === VIEW_TOP ? 400 : 200),
+    )
     rexes[i].applyReplay(scratch[o], scratch[o + 1], scratch[o + 2], scratch[o + 3], state, jeep.position, dt, time)
-    rexes[i].root.visible = rexes[i].position.distanceTo(jeep.position) < (replayView === VIEW_TOP ? 400 : 200)
   }
   let d = 0
   for (let h = 0; h < herds.length; h++) {

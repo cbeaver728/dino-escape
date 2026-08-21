@@ -9,7 +9,19 @@ import { Postfx } from './postfx'
 import { Sound } from './audio'
 import { Rng, clamp, damp, lerp, smoothstep } from './rng'
 
-const REX_COUNT = 13
+/**
+ * How many rexes, and how many of those get seeded along your route so a run
+ * actually meets something. On a 1300m map most of the pack never comes near
+ * you, so the route seeding is what the difficulty is really felt through.
+ */
+const DIFFICULTIES = [
+  { name: 'Easy', rexes: 5, onRoute: 1 },
+  { name: 'Medium', rexes: 10, onRoute: 2 },
+  { name: 'Hard', rexes: 15, onRoute: 4 },
+  { name: 'Legend', rexes: 30, onRoute: 7 },
+]
+const COUNT_WORDS: Record<number, string> = { 5: 'Five', 10: 'Ten', 15: 'Fifteen', 30: 'Thirty' }
+
 /** Herds of deer, purely as an early-warning system for the player. */
 const HERD_COUNT = 7
 /** How far out a locked-on rex starts closing the screen down. */
@@ -146,7 +158,10 @@ const sense: PlayerSense = {
   cover: 0,
   engineRunning: true,
 }
-let bestTime = Number(localStorage.getItem('dino-escape-best') ?? 0)
+let difficulty = clamp(Number(localStorage.getItem('dino-escape-difficulty') ?? 1), 0, 3) | 0
+/** Best times are kept per difficulty - they are not comparable across them. */
+const bestKey = () => `dino-escape-best-${DIFFICULTIES[difficulty].name.toLowerCase()}`
+let bestTime = Number(localStorage.getItem(bestKey()) ?? 0)
 
 const camPos = new THREE.Vector3()
 const camLook = new THREE.Vector3()
@@ -179,13 +194,14 @@ function buildWorld(seed: number) {
   scene.add(jeep.group)
   jeep.reset(world.spawn, world.spawnYaw)
 
-  // Four are seeded loosely along the route to the base so a run always meets
+  // A few are seeded loosely along the route to the base so a run always meets
   // something; the rest are scattered, and all of them wander from there.
+  const diff = DIFFICULTIES[difficulty]
   const routeX = world.base.x - world.spawn.x
   const routeZ = world.base.z - world.spawn.z
-  for (let i = 0; i < REX_COUNT; i++) {
+  for (let i = 0; i < diff.rexes; i++) {
     const rex = new Rex(world, rng)
-    const onRoute = i < 3
+    const onRoute = i < diff.onRoute
     let placed = false
     for (let t = 0; t < 400 && !placed; t++) {
       let x: number
@@ -690,10 +706,10 @@ function win() {
   const first = bestTime === 0 || elapsed < bestTime
   if (first) {
     bestTime = elapsed
-    localStorage.setItem('dino-escape-best', String(Math.round(elapsed * 100) / 100))
+    localStorage.setItem(bestKey(), String(Math.round(elapsed * 100) / 100))
   }
   $('wonStats').innerHTML =
-    `Escaped in <b>${fmtTime(elapsed)}</b>` +
+    `${DIFFICULTIES[difficulty].name} &middot; escaped in <b>${fmtTime(elapsed)}</b>` +
     (first ? ' &mdash; new best' : ` &middot; best ${fmtTime(bestTime)}`)
   show('won')
 }
@@ -704,7 +720,9 @@ function lose() {
   const dist = Math.hypot(world.base.x - jeep.position.x, world.base.z - jeep.position.z)
   $('overMsg').textContent =
     dist < 120 ? 'It took you almost within sight of the fence.' : 'It ran you down in the dark.'
-  $('overStats').innerHTML = `Survived <b>${fmtTime(elapsed)}</b> &middot; <b>${Math.round(dist)}m</b> short of the base`
+  $('overStats').innerHTML =
+    `${DIFFICULTIES[difficulty].name} &middot; survived <b>${fmtTime(elapsed)}</b> &middot; ` +
+    `<b>${Math.round(dist)}m</b> short of the base`
   show('over')
 }
 
@@ -828,6 +846,36 @@ controls.onEngineToggle = () => {
   if (turningOn) sound.starter()
   else sound.silenceEngine()
 }
+
+// ---------------------------------------------------------------------------
+// difficulty picker
+// ---------------------------------------------------------------------------
+
+function syncDifficulty() {
+  const row = $('difficulty')
+  row.dataset.sel = String(difficulty)
+  for (const b of Array.from(row.querySelectorAll('.diff'))) {
+    b.classList.toggle('on', Number((b as HTMLElement).dataset.d) === difficulty)
+  }
+  $('rexCountWord').textContent = COUNT_WORDS[DIFFICULTIES[difficulty].rexes]
+  bestTime = Number(localStorage.getItem(bestKey()) ?? 0)
+}
+
+for (const b of Array.from(document.querySelectorAll('.menu'))) {
+  b.addEventListener('click', () => {
+    phase = 'menu'
+    show('start')
+  })
+}
+
+for (const b of Array.from($('difficulty').querySelectorAll('.diff'))) {
+  b.addEventListener('click', () => {
+    difficulty = clamp(Number((b as HTMLElement).dataset.d), 0, DIFFICULTIES.length - 1) | 0
+    localStorage.setItem('dino-escape-difficulty', String(difficulty))
+    syncDifficulty()
+  })
+}
+syncDifficulty()
 
 $('ctlHint').textContent = controls.isTouch
   ? 'Left thumb: go, brake, and the engine switch. Right thumb: the wheel.'

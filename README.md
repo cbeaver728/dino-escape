@@ -1,7 +1,7 @@
 # Dino Escape
 
 A 3D night-driving survival game. You are in a jeep, somewhere in a forest, in the dark.
-Thirteen T-Rexes are out there. The base with the helipad is a long way off. Go.
+T-Rexes are out there. The base with the helipad is a long way off. Go.
 
 **Play: https://cbeaver728.github.io/dino-escape/**
 
@@ -57,7 +57,7 @@ stopped (the worst case — coasting in adds distance):
 | open ground | 0/6 | 0/6 | 0/6 |
 
 Sitting there is its own problem: you cannot see, you cannot move, the other
-twelve are still wandering, and restarting fires a very loud starter motor. In
+the rest are still wandering, and restarting fires a very loud starter motor. In
 the dark the only warning you get is a pair of amber eyes and the footsteps.
 
 Break contact for long enough and it loses interest and goes back to wandering.
@@ -74,10 +74,26 @@ came from, so a straight run from your start puts you in front of it.
 
 Reach the helipad and you live.
 
-A scripted driver — one that goes for the base and swerves from anything
-chasing, but never uses the engine kill — gets there in **about 1 run in 4**
-(11 of 44 generated maps, 95% interval roughly 12–38%). A person has the hiding
-mechanic on top of that.
+## Difficulty
+
+Picked before the run and remembered between sessions. Best times are kept per
+difficulty, since they are not comparable across them.
+
+| | T-Rexes | seeded on your route | scripted driver wins |
+| --- | --- | --- | --- |
+| Easy | 5 | 1 | 50% |
+| Medium | 10 | 2 | 36% |
+| Hard | 15 | 4 | 14% |
+| Legend | 30 | 7 | 0% |
+
+The win rates are for a bot that drives for the base and swerves from anything
+chasing it but never uses the engine kill, over 14 generated maps each. A person
+has the hiding mechanic on top of that.
+
+Worth knowing: on a map this size most of the pack never comes near you. Across
+full runs only **2 to 6 distinct rexes** ever get within 200m, with an average of
+1.8 within 200m and 0.55 within 120m at any instant. That is why the count of
+those seeded along your route matters as much as the total.
 
 ## Watching it back
 
@@ -206,7 +222,7 @@ The numbers that decide how the game feels:
 | `DEER_INTEREST` / `DEER_GIVE_UP` | `rex.ts` | Odds a rex chases a herd, and for how long. |
 | `REX_ALARM` | `deer.ts` | How far off a rex has to be before the herd bolts. |
 | `HERD_COUNT` | `main.ts` | How much wildlife there is to read. |
-| `REX_COUNT` | `main.ts` | How crowded the map is. |
+| `DIFFICULTIES` | `main.ts` | Rex counts and route seeding per difficulty. |
 | `MIN_TREE_GAP` | `world.ts` | Closest two trunks may stand - how open the woods feel. |
 | `MIN_CLEAR_FRACTION` | `postfx.ts` | The 60% visibility floor. |
 | `REPLAY_HZ` | `replay.ts` | Recording rate; trades replay memory against fidelity. |

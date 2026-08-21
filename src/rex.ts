@@ -6,7 +6,7 @@ import { Rng, angleDelta, clamp, damp, lerp } from './rng'
 /** The headline number: a locked-on rex runs 1.3x the jeep's top speed. */
 export const CHASE_SPEED = JEEP_TOP_SPEED * 1.3
 /** A heavy animal ambling, not jogging: slow, but plainly covering ground. */
-const PATROL_SPEED = 2.2
+const PATROL_SPEED = 2.7
 const INVESTIGATE_SPEED = 7.5
 /**
  * A sprint is faster than you can drive, so the escape has to come from the
@@ -41,16 +41,16 @@ const SIGHT_HIDDEN = 6.5
 
 /** How close a herd has to be before a wandering rex takes an interest. Must
  * exceed the deer's own alarm range, or they bolt before it ever commits. */
-const DEER_NOTICE = 95
+const DEER_NOTICE = 130
 /**
  * Slower than the deer, so these runs never end in a kill - it is a
  * distraction, not a hunt. A rex busy with deer is one not looking for you.
  */
 const DEER_CHASE_SPEED = 12
-const DEER_GIVE_UP = [5, 10] as const
+const DEER_GIVE_UP = [9, 19] as const
 /** Odds a rex bothers at all; the rest of the time it just watches them go. */
-const DEER_INTEREST = 0.5
-const DEER_COOLDOWN = 14
+const DEER_INTEREST = 0.72
+const DEER_COOLDOWN = 5
 
 export type RexState = 'patrol' | 'alert' | 'chase' | 'winded' | 'search' | 'deer'
 

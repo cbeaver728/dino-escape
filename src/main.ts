@@ -15,15 +15,15 @@ import { Rng, clamp, damp, lerp, smoothstep } from './rng'
  * you, so the route seeding is what the difficulty is really felt through.
  */
 const DIFFICULTIES = [
-  { name: 'Easy', rexes: 5, onRoute: 1 },
-  { name: 'Medium', rexes: 10, onRoute: 2 },
-  { name: 'Hard', rexes: 15, onRoute: 4 },
-  { name: 'Legend', rexes: 30, onRoute: 7 },
+  { name: 'Easy', rexes: 5, onRoute: 2 },
+  { name: 'Medium', rexes: 10, onRoute: 4 },
+  { name: 'Hard', rexes: 15, onRoute: 7 },
+  { name: 'Legend', rexes: 30, onRoute: 12 },
 ]
 const COUNT_WORDS: Record<number, string> = { 5: 'Five', 10: 'Ten', 15: 'Fifteen', 30: 'Thirty' }
 
 /** Herds of deer, purely as an early-warning system for the player. */
-const HERD_COUNT = 7
+const HERD_COUNT = 9
 /** How far out a locked-on rex starts closing the screen down. */
 const FEAR_RANGE = 92
 

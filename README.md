@@ -33,8 +33,10 @@ a straight line. What you can do:
   bolt with their white tails flared. They react to something you cannot yet see
   or hear, so a herd breaking cover tells you a rex is out there and roughly
   where it came from. A wandering rex takes a run at a nearby herd about half
-  the time it notices one, and gives up after five to ten seconds because deer
-  are faster than it is — and a rex busy with deer is not looking for you.
+  the time it notices one, and gives up after nine to nineteen seconds because
+  deer are faster than it is. Around a third of all rex activity is these runs,
+  so the forest is busy with them — and a rex committed to a herd is one that is
+  not wandering across your route.
 
 Going dark is a real gamble, not a get-out-of-jail card, because two things have
 to be true at once:
@@ -81,13 +83,13 @@ difficulty, since they are not comparable across them.
 
 | | T-Rexes | seeded on your route | scripted driver wins |
 | --- | --- | --- | --- |
-| Easy | 5 | 1 | 50% |
-| Medium | 10 | 2 | 36% |
-| Hard | 15 | 4 | 14% |
-| Legend | 30 | 7 | 0% |
+| Easy | 5 | 2 | 50% |
+| Medium | 10 | 4 | 28% |
+| Hard | 15 | 7 | 11% |
+| Legend | 30 | 12 | 0% |
 
 The win rates are for a bot that drives for the base and swerves from anything
-chasing it but never uses the engine kill, over 14 generated maps each. A person
+chasing it but never uses the engine kill, over 18 generated maps each. A person
 has the hiding mechanic on top of that.
 
 Worth knowing: on a map this size most of the pack never comes near you. Across

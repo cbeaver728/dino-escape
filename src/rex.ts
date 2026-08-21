@@ -99,6 +99,14 @@ export interface PlayerSense {
 // by +x swings it back. All the rest angles below follow from that.
 // ---------------------------------------------------------------------------
 
+/**
+ * Past this the fog is total, so there is nothing to see however the limbs are
+ * arranged. Beyond it the rig is hidden and left unposed: the AI still runs, so
+ * behaviour is unchanged, but a Legend map stops spending every frame animating
+ * forty-odd skeletons nobody can see.
+ */
+const VISIBLE_RANGE = 150
+
 const SCALE = 0.72 // rig is authored large, then brought down to jeep scale
 const HIP_Y = 5.4 // body origin height, so the feet land on the ground
 
@@ -760,6 +768,16 @@ export class Rex {
   private pose(dt: number, time: number) {
     this.root.position.copy(this.position)
     this.root.rotation.y = this.yaw
+
+    // The body still gets placed above, so a rex that comes back into range is
+    // already in the right spot; only the joints wait. `gait` keeps winding so
+    // the stride does not visibly jump when it reappears.
+    const seen = this.distance < VISIBLE_RANGE
+    if (this.root.visible !== seen) this.root.visible = seen
+    if (!seen) {
+      this.gait += (this.speed / (this.state === 'chase' ? 7.4 : 4.4)) * dt
+      return
+    }
 
     const running = this.state === 'chase'
     // Saturates at a walking pace, so an ambling rex still rolls and bobs

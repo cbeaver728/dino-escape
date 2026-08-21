@@ -137,6 +137,8 @@ let rexes: Rex[] = []
 let herds: Herd[] = []
 let rng = new Rng(1)
 let phase: Phase = 'menu'
+/** True between webglcontextlost and webglcontextrestored; nothing may draw. */
+let contextLost = false
 let elapsed = 0
 let fear = 0
 let caughtTimer = 0
@@ -473,7 +475,7 @@ function tickReplay(dt: number, time: number) {
   sky.position.copy(camera.position)
   world.update(dt, time, false)
   updateReplayUi(total)
-  postfx.render(scene, camera, fear, time)
+  if (!contextLost) postfx.render(scene, camera, fear, time)
 }
 
 function placeCamera(snap: number) {
@@ -629,7 +631,7 @@ function tick(dt: number, time: number) {
 
   if (!ready) {
     sky.position.copy(camera.position)
-    postfx.render(scene, camera, 0, time)
+    if (!contextLost) postfx.render(scene, camera, 0, time)
     return
   }
 
@@ -760,7 +762,7 @@ function tick(dt: number, time: number) {
   world.update(dt, time, phase === 'won')
   updateHud(locked, searching)
 
-  if (!skipRender) postfx.render(scene, camera, fear, time)
+  if (!skipRender && !contextLost) postfx.render(scene, camera, fear, time)
 }
 
 // ---------------------------------------------------------------------------
@@ -879,7 +881,7 @@ rSeek.addEventListener('input', () => {
 })
 
 function hideAll() {
-  for (const s of ['start', 'over', 'won']) $(s).classList.remove('on')
+  for (const s of ['start', 'over', 'won', 'lost']) $(s).classList.remove('on')
 }
 
 function newGame(seed?: number) {
@@ -1008,6 +1010,28 @@ function fitCamera() {
   camera.fov = clamp((vFov * 180) / Math.PI, 48, 74)
   camera.updateProjectionMatrix()
 }
+
+// ---------------------------------------------------------------------------
+// losing the GL context
+// ---------------------------------------------------------------------------
+// Phones reclaim GPU memory from background or heavy pages, and when that
+// happens every draw call quietly becomes a no-op. Without this the screen just
+// stops updating with no clue why, which is indistinguishable from a crash. The
+// preventDefault is what makes the loss recoverable at all.
+renderer.domElement.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault()
+  contextLost = true
+  phase = 'menu'
+  sound.silenceEngine()
+  hideAll()
+  $('loading').classList.add('off')
+  $('lostDetail').textContent = `${DIFFICULTIES[difficulty].name} - ${rexes.length} rex on the map`
+  $('lost').classList.add('on')
+})
+
+renderer.domElement.addEventListener('webglcontextrestored', () => {
+  contextLost = false
+})
 
 addEventListener('resize', () => {
   fitCamera()

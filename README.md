@@ -220,6 +220,27 @@ No art assets, no model files, no audio files — everything is generated at run
 | `src/deer.ts` | Herds: formation wandering, panic flight, and the white tail flag that makes them readable. |
 | `src/postfx.ts` | The closing-in vignette, as a full-screen shader pass. |
 | `src/controls.ts` | Touch pedals and wheel, and the keyboard fallback. |
+
+## Holding up on a phone
+
+Legend puts about 3,200 meshes on the map, and a phone is a much smaller machine
+than the one this was written on, so a few things are deliberate:
+
+- **Distant rexes are not animated.** Past `VISIBLE_RANGE` (150 m, comfortably
+  beyond what the fog lets through) the rig is hidden and the joints are left
+  alone. The AI still runs, so behaviour is identical; only the posing stops.
+  Measured at 3.0 ms -> 1.4 ms per frame with 45 rexes on screen versus culled.
+- **Nothing unbounded reaches the shader.** `performance.now()` climbs for as
+  long as the tab is open, and both of its uses in the vignette are periodic, so
+  the wrap happens on the CPU in float64. The grain hash is also sin-free: the
+  usual `sin(dot(p, big)) * 43758.0` trick feeds its sin a number in the
+  hundreds of thousands, which overflows a mediump fragment shader to inf, then
+  NaN, then white.
+- **A lost GL context says so.** Phones reclaim GPU memory, and when that happens
+  every draw call silently becomes a no-op - a frozen or blank screen with no
+  explanation. The handler calls `preventDefault()` (without it the loss can
+  never be recovered), stops drawing, and puts up a screen naming the difficulty
+  it died on.
 | `src/audio.ts` | Synthesised engine, roars, footsteps and heartbeat via WebAudio. |
 | `src/replay.ts` | Fixed-rate state recorder and the interpolating sampler that plays it back. |
 | `src/rng.ts` | Seeded random and value noise, so a seed always rebuilds the same map. |

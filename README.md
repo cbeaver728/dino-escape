@@ -133,6 +133,26 @@ rate; angles are wrapped properly and discrete things like a rex's state snap
 rather than blend. Poses are not stored — gait, jaw and neck all key off speed
 and state, so replaying those two reproduces the animation exactly.
 
+## Engine sound
+
+Two voices, picked on the start screen and remembered between sessions. Tapping
+one auditions it, since the tap is the user gesture the audio context needs
+anyway.
+
+- **Soft hum** — sines and a triangle, nothing sharp in it.
+- **Round burble** — four harmonics and a detune wobble that smooths out as it
+  revs, for a V8 shape without the bite.
+
+Both roll off 15dB above 1.1kHz, which is what lets them sit roughly **8.5dB
+louder** than the sawtooth engine they replaced without being tiring. That
+volume is doing real work: engine loudness is how far a rex can hear you, so
+the sound has to make speed obvious. Measured idle-to-full-throttle range is
+8.1dB for the hum and 9.0dB for the burble, on top of a pitch sweep and an
+opening filter.
+
+A limiter now sits on the master output. The engine is loud enough that a roar
+landing on top of it would otherwise clip rather than duck.
+
 ## Controls
 
 **Phone** (laid out for a right-handed grip):
@@ -225,6 +245,7 @@ The numbers that decide how the game feels:
 | `REX_ALARM` | `deer.ts` | How far off a rex has to be before the herd bolts. |
 | `HERD_COUNT` | `main.ts` | How much wildlife there is to read. |
 | `DIFFICULTIES` | `main.ts` | Rex counts and route seeding per difficulty. |
+| `buildHum` / `buildBurble` | `audio.ts` | The two engine voices; `level()` sets loudness against revs. |
 | `MIN_TREE_GAP` | `world.ts` | Closest two trunks may stand - how open the woods feel. |
 | `MIN_CLEAR_FRACTION` | `postfx.ts` | The 60% visibility floor. |
 | `REPLAY_HZ` | `replay.ts` | Recording rate; trades replay memory against fidelity. |

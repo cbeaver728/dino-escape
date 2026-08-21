@@ -181,6 +181,25 @@
     background: linear-gradient(180deg, #ff9d8a, #e6473c); color: #240604;
   }
 
+  /* ---------- engine picker ---------- */
+  #engineRow { display: flex; gap: 8px; margin: 10px 0 2px; }
+  .eng {
+    flex: 1 1 0; min-width: 0; margin: 0; padding: 10px 2px;
+    display: grid; gap: 2px; border-radius: 11px;
+    font-size: 11px; letter-spacing: .08em;
+    color: var(--dim); background: rgba(150, 175, 210, .1);
+    border: 1px solid rgba(150, 175, 210, .2); box-shadow: none;
+  }
+  .eng small {
+    display: block; font-size: 9px; letter-spacing: .04em;
+    opacity: .7; text-transform: none;
+  }
+  .eng.on {
+    color: #ffe6ac; background: rgba(24, 18, 8, .8);
+    border-color: rgba(255, 196, 92, .6); font-weight: 800;
+  }
+  .eng.on small { opacity: .85; }
+
   /* ---------- replay transport ---------- */
   #replaybar {
     position: fixed; z-index: 12; display: none;
@@ -277,6 +296,18 @@
   <div id="start" class="screen on"><div class="inner">
     <h1><small>Dino Escape</small>Get to the Base</h1>
     <p>Pitch dark. Headlights and a compass, nothing else. Somewhere past the treeline is a fenced base with a helipad. Reach the pad and you live.</p>
+    <div id="difficulty">
+      <button class="diff" data-d="0">Easy<small>5 rex</small></button>
+      <button class="diff" data-d="1">Medium<small>10 rex</small></button>
+      <button class="diff" data-d="2">Hard<small>15 rex</small></button>
+      <button class="diff" data-d="3">Legend<small>30 rex</small></button>
+    </div>
+    <div id="engineRow">
+      <button class="eng" data-e="hum">Soft hum<small>tap to hear it</small></button>
+      <button class="eng" data-e="burble">Round burble<small>tap to hear it</small></button>
+    </div>
+    <button id="startBtn">Start the engine</button>
+    <p class="stat" id="ctlHint"></p>
     <ul>
       <li><b><span id="rexCountWord">Ten</span> T-Rexes</b> roam the map. They plod along until they <b>hear your engine</b> - the faster you drive, the further the sound carries. On a map this size you will only meet a handful of them.</li>
       <li>Once one locks on it sprints at <b>1.3x your top speed</b>. You cannot outrun it in a straight line. Use the trees: it turns wide.</li>
@@ -287,14 +318,6 @@
       <li>The base is fenced. There is one way in - look for the <b>two amber lamps</b> marking the gate.</li>
       <li>New map every single game.</li>
     </ul>
-    <div id="difficulty">
-      <button class="diff" data-d="0">Easy<small>5 rex</small></button>
-      <button class="diff" data-d="1">Medium<small>10 rex</small></button>
-      <button class="diff" data-d="2">Hard<small>15 rex</small></button>
-      <button class="diff" data-d="3">Legend<small>30 rex</small></button>
-    </div>
-    <p class="stat" id="ctlHint"></p>
-    <button id="startBtn">Start the engine</button>
   </div></div>
 
   <div id="over" class="screen"><div class="inner">

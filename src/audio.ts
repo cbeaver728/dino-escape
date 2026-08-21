@@ -1,15 +1,29 @@
 import { clamp } from './rng'
 
+export type EngineKind = 'hum' | 'burble'
+export const ENGINE_KINDS: EngineKind[] = ['hum', 'burble']
+
+const MASTER = 0.55
+
+/** One built engine voice: retune it per frame, and tear it down on a swap. */
+interface EngineVoice {
+  tune(rev: number, load: number): void
+  level(rev: number, load: number): number
+  stop(): void
+}
+
 /** Everything is synthesised, so the game ships with no audio files. */
 export class Sound {
   private ctx: AudioContext | null = null
   private master: GainNode | null = null
-  private engineGain: GainNode | null = null
-  private engineOsc: OscillatorNode[] = []
-  private engineFilter: BiquadFilterNode | null = null
+  /** Stable node the engine voice feeds; carries the rev-driven level. */
+  private engineOut: GainNode | null = null
+  private voice: EngineVoice | null = null
+  private kind: EngineKind = 'hum'
   private noiseBuf: AudioBuffer | null = null
   private windGain: GainNode | null = null
   private heartTimer = 0
+  private previewUntil = 0
   enabled = true
 
   /** Must be called from a user gesture. */
@@ -26,9 +40,20 @@ export class Sound {
     }
     const ctx = new Ctor()
     this.ctx = ctx
+
+    // A limiter on the way out. The engine is deliberately loud now, and
+    // without this a roar landing on top of it clips instead of ducking.
+    const limiter = ctx.createDynamicsCompressor()
+    limiter.threshold.value = -6
+    limiter.knee.value = 8
+    limiter.ratio.value = 12
+    limiter.attack.value = 0.003
+    limiter.release.value = 0.25
+    limiter.connect(ctx.destination)
+
     this.master = ctx.createGain()
-    this.master.gain.value = 0.55
-    this.master.connect(ctx.destination)
+    this.master.gain.value = MASTER
+    this.master.connect(limiter)
 
     // ---- noise buffer reused for wind, tyres and roars ----
     const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate)
@@ -36,22 +61,10 @@ export class Sound {
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
     this.noiseBuf = buf
 
-    // ---- engine: two detuned saws through a lowpass ----
-    this.engineFilter = ctx.createBiquadFilter()
-    this.engineFilter.type = 'lowpass'
-    this.engineFilter.frequency.value = 420
-    this.engineGain = ctx.createGain()
-    this.engineGain.gain.value = 0
-    this.engineFilter.connect(this.engineGain).connect(this.master)
-    for (const detune of [0, 7, -11]) {
-      const o = ctx.createOscillator()
-      o.type = 'sawtooth'
-      o.frequency.value = 55
-      o.detune.value = detune
-      o.connect(this.engineFilter)
-      o.start()
-      this.engineOsc.push(o)
-    }
+    this.engineOut = ctx.createGain()
+    this.engineOut.gain.value = 0
+    this.engineOut.connect(this.master)
+    this.buildVoice()
 
     // ---- night wind bed ----
     const wind = ctx.createBufferSource()
@@ -67,18 +80,182 @@ export class Sound {
     wind.start()
   }
 
+  /** Swap the engine voice. Safe before or after the context exists. */
+  setEngineKind(kind: EngineKind) {
+    if (kind === this.kind && this.voice) return
+    this.kind = kind
+    if (this.ctx) this.buildVoice()
+  }
+
+  get engineKind(): EngineKind {
+    return this.kind
+  }
+
+  private buildVoice() {
+    const ctx = this.ctx
+    const out = this.engineOut
+    if (!ctx || !out) return
+    this.voice?.stop()
+    this.voice = this.kind === 'burble' ? this.buildBurble(ctx, out) : this.buildHum(ctx, out)
+  }
+
+  /**
+   * Sines and triangles only, rolled off hard above 1.1kHz. Nothing in it is
+   * sharp, so it can sit much louder than a sawtooth engine without wearing
+   * on you - which matters, because engine volume is also the tell for how far
+   * away a rex can hear you.
+   */
+  private buildHum(ctx: AudioContext, out: GainNode): EngineVoice {
+    const tame = ctx.createBiquadFilter()
+    tame.type = 'highshelf'
+    tame.frequency.value = 1100
+    tame.gain.value = -15
+    tame.connect(out)
+
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.Q.value = 0.6
+    lp.connect(tame)
+
+    const a1 = ctx.createOscillator()
+    a1.type = 'sine'
+    const a2 = ctx.createOscillator()
+    a2.type = 'sine'
+    a2.detune.value = 5 // slow beat against a1 so it breathes
+    const a3 = ctx.createOscillator()
+    a3.type = 'triangle'
+    const a3g = ctx.createGain()
+    a3g.gain.value = 0.35
+    a3.connect(a3g)
+    a1.connect(lp)
+    a2.connect(lp)
+    a3g.connect(lp)
+    a1.start()
+    a2.start()
+    a3.start()
+
+    return {
+      tune(rev, load) {
+        const t = ctx.currentTime
+        const f = 38 + rev * 112
+        a1.frequency.setTargetAtTime(f, t, 0.09)
+        a2.frequency.setTargetAtTime(f * 2, t, 0.09)
+        a3.frequency.setTargetAtTime(f, t, 0.09)
+        lp.frequency.setTargetAtTime(380 + rev * 1450 + load * 200, t, 0.1)
+      },
+      level(rev, load) {
+        return 0.16 + rev * 0.33 + load * 0.03
+      },
+      stop() {
+        for (const o of [a1, a2, a3]) {
+          try {
+            o.stop()
+          } catch {
+            /* already stopped */
+          }
+        }
+      },
+    }
+  }
+
+  /** Four harmonics and nothing above them: a V8 shape without the bite. */
+  private buildBurble(ctx: AudioContext, out: GainNode): EngineVoice {
+    const tame = ctx.createBiquadFilter()
+    tame.type = 'highshelf'
+    tame.frequency.value = 1100
+    tame.gain.value = -15
+    tame.connect(out)
+
+    const lp = ctx.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.Q.value = 0.6
+    lp.connect(tame)
+
+    const harmonics = [1, 0.45, 0.2, 0.09]
+    const re = new Float32Array(harmonics.length + 1)
+    const im = new Float32Array(harmonics.length + 1)
+    harmonics.forEach((h, i) => (im[i + 1] = h))
+    const ov = ctx.createOscillator()
+    ov.setPeriodicWave(ctx.createPeriodicWave(re, im))
+
+    const pk = ctx.createBiquadFilter()
+    pk.type = 'peaking'
+    pk.frequency.value = 112
+    pk.Q.value = 1.1
+    pk.gain.value = 7
+    ov.connect(pk).connect(lp)
+
+    // detune wobble at half the firing rate gives the lumpy idle
+    const lump = ctx.createOscillator()
+    lump.type = 'sine'
+    const lumpAmt = ctx.createGain()
+    lumpAmt.gain.value = 5
+    lump.connect(lumpAmt)
+    lumpAmt.connect(ov.detune)
+    ov.start()
+    lump.start()
+
+    return {
+      tune(rev, load) {
+        const t = ctx.currentTime
+        const f = 36 + rev * 88
+        ov.frequency.setTargetAtTime(f, t, 0.08)
+        lump.frequency.setTargetAtTime(f * 0.5, t, 0.08)
+        lumpAmt.gain.setTargetAtTime(7 - rev * 5, t, 0.12) // smooths out as it revs
+        lp.frequency.setTargetAtTime(560 + rev * 1200 + load * 200, t, 0.1)
+      },
+      level(rev, load) {
+        return 0.24 + rev * 0.24 + load * 0.03
+      },
+      stop() {
+        for (const o of [ov, lump]) {
+          try {
+            o.stop()
+          } catch {
+            /* already stopped */
+          }
+        }
+      },
+    }
+  }
+
   setMuted(muted: boolean) {
-    if (this.master) this.master.gain.value = muted ? 0 : 0.55
+    if (this.master) this.master.gain.value = muted ? 0 : MASTER
   }
 
   /** rev 0..1, load 0..1 (throttle down) */
   engine(rev: number, load: number) {
-    if (!this.ctx || !this.engineGain || !this.engineFilter) return
-    const t = this.ctx.currentTime
-    const f = 42 + rev * 108
-    for (const o of this.engineOsc) o.frequency.setTargetAtTime(f, t, 0.08)
-    this.engineFilter.frequency.setTargetAtTime(320 + rev * 1500 + load * 420, t, 0.1)
-    this.engineGain.gain.setTargetAtTime(0.1 + rev * 0.13 + load * 0.05, t, 0.1)
+    if (!this.ctx || !this.engineOut || !this.voice) return
+    if (this.ctx.currentTime < this.previewUntil) return // a preview is running
+    this.voice.tune(rev, load)
+    this.engineOut.gain.setTargetAtTime(this.voice.level(rev, load), this.ctx.currentTime, 0.1)
+  }
+
+  /**
+   * A short blip of the selected engine, for auditioning it from the menu.
+   * Holds off `engine()` for its duration so a running game cannot fight it.
+   */
+  previewEngine(kind: EngineKind) {
+    this.start()
+    this.setEngineKind(kind)
+    const ctx = this.ctx
+    if (!ctx || !this.engineOut || !this.voice) return
+    const t = ctx.currentTime
+    this.previewUntil = t + 1.9
+    const g = this.engineOut.gain
+    g.cancelScheduledValues(t)
+    g.setValueAtTime(0.0001, t)
+    const at = (rev: number, when: number) => {
+      this.voice?.tune(rev, 1)
+      g.linearRampToValueAtTime(this.voice ? this.voice.level(rev, 1) : 0, t + when)
+    }
+    // idle, wind up, hold, drop away
+    at(0.12, 0.15)
+    setTimeout(() => this.voice?.tune(1, 1), 200)
+    at(1, 0.95)
+    at(0.9, 1.35)
+    g.linearRampToValueAtTime(0.0001, t + 1.85)
+    setTimeout(() => this.voice?.tune(0.12, 0), 1500)
   }
 
   /** Distant when it first hears you, close and wet when it is on top of you. */
@@ -210,8 +387,8 @@ export class Sound {
   }
 
   silenceEngine() {
-    if (this.engineGain && this.ctx) {
-      this.engineGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.15)
+    if (this.engineOut && this.ctx && this.ctx.currentTime >= this.previewUntil) {
+      this.engineOut.gain.setTargetAtTime(0, this.ctx.currentTime, 0.15)
     }
   }
 }

@@ -6,7 +6,7 @@ import { Herd, spawnHerds } from './deer'
 import { Recording, REX_STATES, FLAG_ENGINE, FLAG_BRAKE } from './replay'
 import { Controls } from './controls'
 import { Postfx } from './postfx'
-import { Sound } from './audio'
+import { Sound, ENGINE_KINDS, type EngineKind } from './audio'
 import { Rng, clamp, damp, lerp, smoothstep } from './rng'
 
 /**
@@ -859,6 +859,31 @@ function syncDifficulty() {
   }
   $('rexCountWord').textContent = COUNT_WORDS[DIFFICULTIES[difficulty].rexes]
   bestTime = Number(localStorage.getItem(bestKey()) ?? 0)
+}
+
+// ---------------------------------------------------------------------------
+// engine sound picker
+// ---------------------------------------------------------------------------
+
+function syncEngineKind() {
+  for (const b of Array.from(document.querySelectorAll('.eng'))) {
+    b.classList.toggle('on', (b as HTMLElement).dataset.e === sound.engineKind)
+  }
+}
+
+{
+  const saved = localStorage.getItem('dino-escape-engine')
+  sound.setEngineKind(ENGINE_KINDS.includes(saved as EngineKind) ? (saved as EngineKind) : 'hum')
+  for (const b of Array.from(document.querySelectorAll('.eng'))) {
+    b.addEventListener('click', () => {
+      const kind = (b as HTMLElement).dataset.e as EngineKind
+      localStorage.setItem('dino-escape-engine', kind)
+      // the click is the user gesture audio needs, so audition it right away
+      sound.previewEngine(kind)
+      syncEngineKind()
+    })
+  }
+  syncEngineKind()
 }
 
 for (const b of Array.from(document.querySelectorAll('.menu'))) {

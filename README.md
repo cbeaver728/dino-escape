@@ -82,14 +82,24 @@ mechanic on top of that.
 ## Watching it back
 
 Win or lose, the result screen offers **Watch the replay**. It plays back the
-whole run with pause, scrub, and speed from 0.25× to 4×, in two views:
+whole run with pause, scrub, and speed from 0.25× to 4×, and one button cycles
+three cameras:
 
-- **Chase cam** — behind the jeep, exactly as you drove it, including the
-  screen closing in when something was on you. This is the one where you find
-  out how close it actually got.
-- **Overhead** — 95m up, world-aligned so directions stay put, with a green pip
-  over the jeep and a red one over each rex. This is the one that answers
-  "where did that thing come from".
+- **Chase** — behind the jeep, exactly as you drove it, including the screen
+  closing in when something was on you.
+- **Rear** — looking back over the jeep at whatever is gaining on you, and it
+  tracks the pursuer rather than staring straight astern, because a rex arcs in
+  from the side and a fixed rearward aim loses it off the edge of frame. This is
+  the one that is unpleasant to watch.
+- **Top** — 95m up, world-aligned so directions stay put, with a green pip over
+  the jeep and a red one over each rex. This is the one that answers "where did
+  that thing come from".
+
+The rear camera has to sit *forward* of the jeep looking back — put it on the
+tail and the vehicle ends up behind the lens, and put it close and the roll cage
+fills the shot. Sweeping the placement against a recorded chase, 13m ahead and
+4.6m up keeps the jeep in frame about 90% of the time and the pursuer about 80%;
+the rest is a rex attacking from in front, which a rear camera should not show.
 
 The overhead view lifts the ambient light and thins the fog while it is active,
 because a night forest from 95m up is otherwise a black rectangle. The pips

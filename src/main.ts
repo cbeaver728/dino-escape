@@ -21,6 +21,15 @@ const REPLAY_SPEEDS = [0.25, 0.5, 1, 2, 4]
 /** How high the overhead replay camera sits, in metres above the jeep. */
 const REPLAY_TOP_HEIGHT = 95
 
+/** Replay cameras, cycled by one button. */
+const VIEW_CHASE = 0 // behind the jeep, looking where you were going
+const VIEW_REAR = 1 // up on the back deck, looking at what is gaining on you
+const VIEW_TOP = 2 // straight down, to see where it came from
+const VIEW_NAMES = ['Chase', 'Rear', 'Top']
+/** Rear-camera placement, found by sweeping for the framing that keeps both the
+ * jeep and its pursuer on screen most of the time. */
+const REAR_CAM = { forward: 13, up: 4.6, lookBack: 22, lookUp: 2.2, track: 0.85 }
+
 const $ = (id: string) => document.getElementById(id) as HTMLElement
 
 // ---------------------------------------------------------------------------
@@ -125,7 +134,7 @@ let scratch: Float32Array = new Float32Array(0)
 let replayT = 0
 let replaySpeed = 2 // index into REPLAY_SPEEDS
 let replayPaused = false
-let replayTop = false
+let replayView = VIEW_CHASE
 let replayFrom: 'over' | 'won' = 'over'
 let markers: THREE.Mesh[] = []
 let jeepMarker: THREE.Mesh | null = null
@@ -296,8 +305,8 @@ function applyFrame(dt: number, time: number) {
   for (let i = 0; i < rexes.length; i++) {
     const o = recording.rexAt(i)
     const state = REX_STATES[Math.round(scratch[o + 4])] ?? 'patrol'
-    rexes[i].applyReplay(scratch[o], scratch[o + 1], scratch[o + 2], scratch[o + 3], state, dt, time)
-    rexes[i].root.visible = rexes[i].position.distanceTo(jeep.position) < (replayTop ? 400 : 200)
+    rexes[i].applyReplay(scratch[o], scratch[o + 1], scratch[o + 2], scratch[o + 3], state, jeep.position, dt, time)
+    rexes[i].root.visible = rexes[i].position.distanceTo(jeep.position) < (replayView === VIEW_TOP ? 400 : 200)
   }
   let d = 0
   for (let h = 0; h < herds.length; h++) {
@@ -311,7 +320,7 @@ function applyFrame(dt: number, time: number) {
       dt,
     )
     d += herds[h].animals.length
-    herds[h].setVisible(herds[h].centre.distanceTo(jeep.position) < (replayTop ? 300 : 150))
+    herds[h].setVisible(herds[h].centre.distanceTo(jeep.position) < (replayView === VIEW_TOP ? 300 : 150))
   }
 }
 
@@ -338,7 +347,7 @@ function tickReplay(dt: number, time: number) {
 
   // The overhead view has to see through a night forest from 95m up, so it
   // lifts the ambient, thins the fog, and floats a pip over each animal.
-  topBlend = damp(topBlend, replayTop ? 1 : 0, 6, dt)
+  topBlend = damp(topBlend, replayView === VIEW_TOP ? 1 : 0, 6, dt)
   ambient.intensity = AMBIENT_LIT * lerp(1, 5.5, topBlend)
   hemi.intensity = HEMI_LIT * lerp(1, 4, topBlend)
   moon.intensity = MOON_LIT * lerp(1, 2.4, topBlend)
@@ -365,7 +374,7 @@ function tickReplay(dt: number, time: number) {
   // watching a chase without the screen closing in loses most of the menace.
   // Skipped overhead, where it would just crop the map.
   let wantFear = 0
-  if (!replayTop) {
+  if (replayView !== VIEW_TOP) {
     for (const rex of rexes) {
       if (rex.state === 'chase' || rex.state === 'winded') {
         wantFear = Math.max(wantFear, smoothstep(FEAR_RANGE, 8, rex.position.distanceTo(jeep.position)))
@@ -375,18 +384,64 @@ function tickReplay(dt: number, time: number) {
   fear = seekSnap ? wantFear : damp(fear, wantFear, 6, dt)
 
   // --- camera ---
-  if (replayTop) {
+  const snap = seekSnap
+  if (replayView === VIEW_TOP) {
     tmp.set(jeep.position.x, jeep.position.y + REPLAY_TOP_HEIGHT, jeep.position.z)
-    camPos.lerp(tmp, seekSnap ? 1 : 1 - Math.exp(-6 * dt))
+    camPos.lerp(tmp, snap ? 1 : 1 - Math.exp(-6 * dt))
     camera.position.copy(camPos)
     // world-aligned rather than following the jeep's heading: the question this
     // view answers is "which direction did it come from", and that needs a
     // stable compass, not one that spins with the driving
     camera.up.set(0, 0, -1)
     camera.lookAt(camPos.x, jeep.position.y, camPos.z + 0.001)
+  } else if (replayView === VIEW_REAR) {
+    camera.up.set(0, 1, 0)
+    // Looking back over the jeep at whatever is gaining on you. The camera has
+    // to sit FORWARD of the vehicle for this: put it astern and the jeep ends
+    // up behind the lens, out of shot. Far enough forward, and low enough, that
+    // the tail of the jeep sits in the bottom of frame with the pursuer centred.
+    const fx = Math.sin(jeep.yaw)
+    const fz = Math.cos(jeep.yaw)
+    // Well forward, or the roll cage is a foot from the lens and fills the shot.
+    // At this range the jeep sits small and low in frame and you see past it.
+    tmp.set(
+      jeep.position.x + fx * REAR_CAM.forward,
+      jeep.position.y + REAR_CAM.up,
+      jeep.position.z + fz * REAR_CAM.forward,
+    )
+    camPos.lerp(tmp, snap ? 1 : 1 - Math.exp(-9 * dt))
+    camera.position.copy(camPos)
+    // Aimed nearly level so the shot is ground and pursuer rather than half sky.
+    tmp.set(
+      jeep.position.x - fx * REAR_CAM.lookBack,
+      jeep.position.y + REAR_CAM.lookUp,
+      jeep.position.z - fz * REAR_CAM.lookBack,
+    )
+    // A pursuer arcs in from the side rather than sitting neatly astern, so a
+    // fixed rearward aim loses it off the edge of frame. Track whatever is
+    // actually hunting you, as someone in the back would. Only things behind
+    // the jeep count, or the "rear" camera would swing round to face forwards.
+    let hunter: Rex | null = null
+    let hunterDist = Infinity
+    for (const rex of rexes) {
+      if (rex.state !== 'chase' && rex.state !== 'winded') continue
+      const dx = rex.position.x - jeep.position.x
+      const dz = rex.position.z - jeep.position.z
+      if (dx * fx + dz * fz > 5) continue // ahead of us: not the rear view's job
+      const dd = Math.hypot(dx, dz)
+      if (dd < hunterDist && dd < 110) {
+        hunterDist = dd
+        hunter = rex
+      }
+    }
+    if (hunter) {
+      tmp.lerp(hunter.position.clone().setY(hunter.position.y + 3.6), REAR_CAM.track)
+    }
+    camLook.lerp(tmp, snap ? 1 : 1 - Math.exp(-9 * dt))
+    camera.lookAt(camLook)
   } else {
     camera.up.set(0, 1, 0)
-    placeCamera(seekSnap ? 1 : 1 - Math.exp(-7 * dt))
+    placeCamera(snap ? 1 : 1 - Math.exp(-7 * dt))
   }
   seekSnap = false
 
@@ -671,7 +726,7 @@ function startReplay() {
   replayT = 0
   replaySpeed = 2
   replayPaused = false
-  replayTop = false
+  replayView = VIEW_CHASE
   sound.silenceEngine()
   hideAll()
   document.body.classList.add('replay')
@@ -697,7 +752,7 @@ function endReplay() {
 function syncReplayUi() {
   $('rPlay').textContent = replayPaused ? 'Play' : 'Pause'
   $('rSpeed').textContent = `${REPLAY_SPEEDS[replaySpeed]}×`
-  $('rView').textContent = replayTop ? 'Chase cam' : 'Overhead'
+  $('rView').textContent = `Cam: ${VIEW_NAMES[replayView]}`
 }
 
 function updateReplayUi(total: number) {
@@ -724,7 +779,8 @@ $('rFaster').addEventListener('click', () => {
   syncReplayUi()
 })
 $('rView').addEventListener('click', () => {
-  replayTop = !replayTop
+  replayView = (replayView + 1) % VIEW_NAMES.length
+  seekSnap = true // cut between cameras rather than swinging through the world
   syncReplayUi()
 })
 rSeek.addEventListener('pointerdown', () => (seekDragging = true))
@@ -880,6 +936,7 @@ if (import.meta.env.DEV) {
         skipRender = false
       },
       newGame,
+      rearCam: REAR_CAM,
       three: {
         scene,
         camera,

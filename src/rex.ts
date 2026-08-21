@@ -697,11 +697,22 @@ export class Rex {
    * and state, so replaying those two reproduces the animation exactly without
    * storing a joint angle per frame.
    */
-  applyReplay(x: number, z: number, yaw: number, speed: number, state: RexState, dt: number, time: number) {
+  applyReplay(
+    x: number,
+    z: number,
+    yaw: number,
+    speed: number,
+    state: RexState,
+    player: THREE.Vector3,
+    dt: number,
+    time: number,
+  ) {
     this.position.set(x, this.world.heightAt(x, z), z)
     this.yaw = yaw
     this.speed = speed
     this.state = state
+    // kept current during playback too, so anything reading it is not stale
+    this.distance = Math.hypot(player.x - x, player.z - z)
     this.pose(dt, time)
   }
 

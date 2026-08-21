@@ -163,6 +163,67 @@ export class Jeep {
     return this.world.waterDepth(this.position.x, this.position.z) > 0.25
   }
 
+  get steer(): number {
+    return this.steerAngle
+  }
+
+  /**
+   * Everything visual, split out of `update` so the replay can pose the jeep
+   * from recorded state without re-running any physics.
+   */
+  private applyPose(dt: number, braking: boolean) {
+    const x = this.position.x
+    const z = this.position.z
+    const wet = clamp(this.world.waterDepth(x, z) / 1.4, 0, 1)
+
+    this.group.position.copy(this.position)
+    this.group.rotation.y = this.yaw
+
+    // Sit the body on the ground: pitch from how much the surface normal leans
+    // fore/aft, roll from how much it leans across. Both signs follow the same
+    // right-handed convention as the steering - nose up is a positive rotation
+    // about X, and the driver's right is -X.
+    const n = this.world.normalAt(x, z, _n)
+    const pitch = Math.asin(clamp(n.x * Math.sin(this.yaw) + n.z * Math.cos(this.yaw), -1, 1))
+    const roll = Math.asin(clamp(n.z * Math.sin(this.yaw) - n.x * Math.cos(this.yaw), -1, 1))
+    this.bumpPhase += Math.abs(this.speed) * dt * 3
+    const jitter = Math.sin(this.bumpPhase) * 0.012 * clamp(Math.abs(this.speed) / 10, 0, 1)
+    this.bodyTilt.rotation.x = damp(this.bodyTilt.rotation.x, pitch + jitter, 8, dt)
+    this.bodyTilt.rotation.z = damp(this.bodyTilt.rotation.z, roll, 8, dt)
+    this.bodyTilt.position.y = damp(this.bodyTilt.position.y, wet * -0.45, 5, dt)
+
+    this.wheelSpin -= (this.speed / 0.72) * dt
+    for (const w of this.wheels) w.rotation.x = this.wheelSpin
+    // negated for the same reason as the yaw: positive steer is the driver's right
+    for (const p of this.frontWheels) p.rotation.y = -this.steerAngle
+
+    // --- lights follow the ignition ---
+    const lit = this.engineOn
+    for (const s of this.headlights) s.visible = lit
+    this.fill.intensity = damp(this.fill.intensity, lit ? 45 : 0, 6, dt)
+    this.lampMat.color.setHex(lit ? 0xfff6da : 0x14161a)
+    this.tailMat.color.setHex(lit && braking ? 0xff2a1c : 0x3a0806)
+  }
+
+  /** Drive the jeep straight from a recorded frame, no physics involved. */
+  applyReplay(
+    x: number,
+    z: number,
+    yaw: number,
+    speed: number,
+    steer: number,
+    engineOn: boolean,
+    braking: boolean,
+    dt: number,
+  ) {
+    this.position.set(x, this.world.heightAt(x, z), z)
+    this.yaw = yaw
+    this.speed = speed
+    this.steerAngle = steer
+    this.engineOn = engineOn
+    this.applyPose(dt, braking)
+  }
+
   update(dt: number, input: DriveInput) {
     // --- steering ---
     const target = clamp(input.steer, -1, 1) * MAX_STEER
@@ -263,40 +324,13 @@ export class Jeep {
     this.position.z = nz
     this.position.y = this.world.heightAt(nx, nz)
 
-    // --- pose ---
-    this.group.position.copy(this.position)
-    this.group.rotation.y = this.yaw
-
-    // Sit the body on the ground: pitch from how much the surface normal leans
-    // fore/aft, roll from how much it leans across. Both signs follow the same
-    // right-handed convention as the steering - nose up is a positive rotation
-    // about X, and the driver's right is -X.
-    const n = this.world.normalAt(nx, nz, _n)
-    const pitch = Math.asin(clamp(n.x * Math.sin(this.yaw) + n.z * Math.cos(this.yaw), -1, 1))
-    const roll = Math.asin(clamp(n.z * Math.sin(this.yaw) - n.x * Math.cos(this.yaw), -1, 1))
-    this.bumpPhase += Math.abs(this.speed) * dt * 3
-    const jitter = Math.sin(this.bumpPhase) * 0.012 * clamp(Math.abs(this.speed) / 10, 0, 1)
-    this.bodyTilt.rotation.x = damp(this.bodyTilt.rotation.x, pitch + jitter, 8, dt)
-    this.bodyTilt.rotation.z = damp(this.bodyTilt.rotation.z, roll, 8, dt)
-    this.bodyTilt.position.y = damp(this.bodyTilt.position.y, wet * -0.45, 5, dt)
-
-    this.wheelSpin -= (this.speed / 0.72) * dt
-    for (const w of this.wheels) w.rotation.x = this.wheelSpin
-    // negated for the same reason as the yaw: positive steer is the driver's right
-    for (const p of this.frontWheels) p.rotation.y = -this.steerAngle
-
-    // --- lights follow the ignition ---
-    const lit = this.engineOn
-    for (const s of this.headlights) s.visible = lit
-    this.fill.intensity = damp(this.fill.intensity, lit ? 45 : 0, 6, dt)
-    this.lampMat.color.setHex(lit ? 0xfff6da : 0x14161a)
-    this.tailMat.color.setHex(lit && input.brake ? 0xff2a1c : 0x3a0806)
+    this.applyPose(dt, input.brake)
 
     // --- how far the engine carries ---
     // Silent when shut down, so nothing can hear you; the decay is not instant,
     // which is why cutting it early matters more than cutting it close.
     const rev = clamp(Math.abs(this.speed) / JEEP_TOP_SPEED, 0, 1)
-    const wantsNoise = lit ? 26 + rev * 72 + (input.throttle ? 8 : 0) : 0
+    const wantsNoise = this.engineOn ? 26 + rev * 72 + (input.throttle ? 8 : 0) : 0
     this.noiseRadius = damp(this.noiseRadius, wantsNoise, 3, dt)
   }
 

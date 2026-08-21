@@ -3,6 +3,7 @@ import { World, HALF, WATER_LEVEL } from './world'
 import { Jeep, JEEP_TOP_SPEED } from './jeep'
 import { Rex, PlayerSense } from './rex'
 import { Herd, spawnHerds } from './deer'
+import { Recording, REX_STATES, FLAG_ENGINE, FLAG_BRAKE } from './replay'
 import { Controls } from './controls'
 import { Postfx } from './postfx'
 import { Sound } from './audio'
@@ -14,7 +15,11 @@ const HERD_COUNT = 7
 /** How far out a locked-on rex starts closing the screen down. */
 const FEAR_RANGE = 92
 
-type Phase = 'menu' | 'playing' | 'caught' | 'over' | 'won'
+type Phase = 'menu' | 'playing' | 'caught' | 'over' | 'won' | 'replay'
+
+const REPLAY_SPEEDS = [0.25, 0.5, 1, 2, 4]
+/** How high the overhead replay camera sits, in metres above the jeep. */
+const REPLAY_TOP_HEIGHT = 95
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement
 
@@ -115,6 +120,17 @@ let killer: Rex | null = null
 let footTimer = 0
 let darkness = 0
 let cover = 0
+let recording: Recording | null = null
+let scratch: Float32Array = new Float32Array(0)
+let replayT = 0
+let replaySpeed = 2 // index into REPLAY_SPEEDS
+let replayPaused = false
+let replayTop = false
+let replayFrom: 'over' | 'won' = 'over'
+let markers: THREE.Mesh[] = []
+let jeepMarker: THREE.Mesh | null = null
+let topBlend = 0
+let seekSnap = false
 const sense: PlayerSense = {
   position: new THREE.Vector3(),
   noiseRadius: 0,
@@ -189,9 +205,195 @@ function buildWorld(seed: number) {
   herds = spawnHerds(world, rng, HERD_COUNT)
   for (const h of herds) scene.add(h.group)
 
+  recording = new Recording({
+    rexCount: rexes.length,
+    deerCount: herds.reduce((s, h) => s + h.animals.length, 0),
+    herdCount: herds.length,
+  })
+  scratch = recording.scratch()
+  buildMarkers()
+
   ready = true
   // snap the camera behind the jeep so the first frame is not a swoop
   placeCamera(1)
+}
+
+/**
+ * Floating pips above the jeep and each rex, shown only in the overhead
+ * replay. From 95m up the canopy hides almost everything, and the whole point
+ * of that view is seeing which direction the thing came from.
+ */
+function buildMarkers() {
+  for (const m of markers) scene.remove(m)
+  markers = []
+  if (jeepMarker) scene.remove(jeepMarker)
+
+  const ring = new THREE.CircleGeometry(2.6, 16)
+  ring.rotateX(-Math.PI / 2)
+  const rexMat = new THREE.MeshBasicMaterial({ color: 0xff3b2a, fog: false, transparent: true, opacity: 0.9 })
+  const jeepMat = new THREE.MeshBasicMaterial({ color: 0x7dfaa8, fog: false, transparent: true, opacity: 0.9 })
+  for (let i = 0; i < rexes.length; i++) {
+    const m = new THREE.Mesh(ring, rexMat)
+    m.visible = false
+    m.renderOrder = 3
+    scene.add(m)
+    markers.push(m)
+  }
+  jeepMarker = new THREE.Mesh(ring, jeepMat)
+  jeepMarker.visible = false
+  jeepMarker.renderOrder = 3
+  scene.add(jeepMarker)
+}
+
+function captureFrame(dt: number) {
+  if (!recording) return
+  const slot = recording.next(dt)
+  if (!slot) return
+  const { buf, at } = slot
+  buf[at] = jeep.position.x
+  buf[at + 1] = jeep.position.z
+  buf[at + 2] = jeep.yaw
+  buf[at + 3] = jeep.speed
+  buf[at + 4] = jeep.steer
+  buf[at + 5] = (jeep.engineOn ? FLAG_ENGINE : 0) | (controls.input.brake ? FLAG_BRAKE : 0)
+  for (let i = 0; i < rexes.length; i++) {
+    const o = at + recording.rexAt(i)
+    const r = rexes[i]
+    buf[o] = r.position.x
+    buf[o + 1] = r.position.z
+    buf[o + 2] = r.yaw
+    buf[o + 3] = r.replaySpeed
+    buf[o + 4] = REX_STATES.indexOf(r.state)
+  }
+  let d = 0
+  for (let h = 0; h < herds.length; h++) {
+    for (const deer of herds[h].animals) {
+      const o = at + recording.deerAt(d++)
+      buf[o] = deer.position.x
+      buf[o + 1] = deer.position.z
+      buf[o + 2] = deer.yaw
+      buf[o + 3] = deer.speed
+    }
+    buf[at + recording.herdAt(h)] = herds[h].panic
+  }
+}
+
+/** Push one sampled frame back onto the live scene objects. */
+function applyFrame(dt: number, time: number) {
+  if (!recording) return
+  recording.sample(replayT, scratch)
+  const flags = scratch[5]
+  jeep.applyReplay(
+    scratch[0],
+    scratch[1],
+    scratch[2],
+    scratch[3],
+    scratch[4],
+    (flags & FLAG_ENGINE) !== 0,
+    (flags & FLAG_BRAKE) !== 0,
+    dt,
+  )
+  for (let i = 0; i < rexes.length; i++) {
+    const o = recording.rexAt(i)
+    const state = REX_STATES[Math.round(scratch[o + 4])] ?? 'patrol'
+    rexes[i].applyReplay(scratch[o], scratch[o + 1], scratch[o + 2], scratch[o + 3], state, dt, time)
+    rexes[i].root.visible = rexes[i].position.distanceTo(jeep.position) < (replayTop ? 400 : 200)
+  }
+  let d = 0
+  for (let h = 0; h < herds.length; h++) {
+    const base = d
+    herds[h].applyReplay(
+      (i) => {
+        const o = recording!.deerAt(base + i)
+        return { x: scratch[o], z: scratch[o + 1], yaw: scratch[o + 2], speed: scratch[o + 3] }
+      },
+      scratch[recording.herdAt(h)],
+      dt,
+    )
+    d += herds[h].animals.length
+    herds[h].setVisible(herds[h].centre.distanceTo(jeep.position) < (replayTop ? 300 : 150))
+  }
+}
+
+/**
+ * Playback. Everything on screen is posed from the recording; nothing is
+ * simulated, so scrubbing backwards works as naturally as playing forwards.
+ */
+function tickReplay(dt: number, time: number) {
+  if (!recording) return
+  const total = recording.seconds
+
+  if (!replayPaused) {
+    replayT += dt * REPLAY_SPEEDS[replaySpeed]
+    if (replayT >= total) {
+      replayT = total
+      replayPaused = true
+      syncReplayUi()
+    }
+  }
+
+  // Pose at the wall-clock rate, not the replay rate, so damped things like
+  // the body tilt settle the same however fast you are watching.
+  applyFrame(dt, time)
+
+  // The overhead view has to see through a night forest from 95m up, so it
+  // lifts the ambient, thins the fog, and floats a pip over each animal.
+  topBlend = damp(topBlend, replayTop ? 1 : 0, 6, dt)
+  ambient.intensity = AMBIENT_LIT * lerp(1, 5.5, topBlend)
+  hemi.intensity = HEMI_LIT * lerp(1, 4, topBlend)
+  moon.intensity = MOON_LIT * lerp(1, 2.4, topBlend)
+  ;(scene.fog as THREE.FogExp2).density = lerp(0.0165, 0.0022, topBlend)
+
+  const showPips = topBlend > 0.15
+  for (let i = 0; i < markers.length; i++) {
+    const m = markers[i]
+    m.visible = showPips && rexes[i].root.visible
+    if (m.visible) {
+      m.position.set(rexes[i].position.x, rexes[i].position.y + 26, rexes[i].position.z)
+      const s = rexes[i].state
+      const hot = s === 'chase' || s === 'winded'
+      ;(m.material as THREE.MeshBasicMaterial).opacity = hot ? 0.95 : 0.45
+      m.scale.setScalar(hot ? 1.35 : 1)
+    }
+  }
+  if (jeepMarker) {
+    jeepMarker.visible = showPips
+    jeepMarker.position.set(jeep.position.x, jeep.position.y + 26, jeep.position.z)
+  }
+
+  // Same vignette the player had at the time, recomputed rather than recorded -
+  // watching a chase without the screen closing in loses most of the menace.
+  // Skipped overhead, where it would just crop the map.
+  let wantFear = 0
+  if (!replayTop) {
+    for (const rex of rexes) {
+      if (rex.state === 'chase' || rex.state === 'winded') {
+        wantFear = Math.max(wantFear, smoothstep(FEAR_RANGE, 8, rex.position.distanceTo(jeep.position)))
+      }
+    }
+  }
+  fear = seekSnap ? wantFear : damp(fear, wantFear, 6, dt)
+
+  // --- camera ---
+  if (replayTop) {
+    tmp.set(jeep.position.x, jeep.position.y + REPLAY_TOP_HEIGHT, jeep.position.z)
+    camPos.lerp(tmp, seekSnap ? 1 : 1 - Math.exp(-6 * dt))
+    camera.position.copy(camPos)
+    // world-aligned rather than following the jeep's heading: the question this
+    // view answers is "which direction did it come from", and that needs a
+    // stable compass, not one that spins with the driving
+    camera.up.set(0, 0, -1)
+    camera.lookAt(camPos.x, jeep.position.y, camPos.z + 0.001)
+  } else {
+    camera.up.set(0, 1, 0)
+    placeCamera(seekSnap ? 1 : 1 - Math.exp(-7 * dt))
+  }
+  seekSnap = false
+
+  sky.position.copy(camera.position)
+  world.update(dt, time, false)
+  updateReplayUi(total)
+  postfx.render(scene, camera, fear, time)
 }
 
 function placeCamera(snap: number) {
@@ -291,13 +493,20 @@ function tick(dt: number, time: number) {
     return
   }
 
+  if (phase === 'replay') {
+    tickReplay(dt, time)
+    return
+  }
+
   controls.update(dt)
 
   if (phase === 'playing') {
     elapsed += dt
     jeep.update(dt, controls.input)
+    captureFrame(dt)
   } else if (phase === 'caught') {
     jeep.update(dt, { steer: 0, throttle: false, brake: true })
+    captureFrame(dt)
   }
 
   // --- dinosaurs ---
@@ -448,6 +657,84 @@ function show(id: string) {
   for (const s of ['start', 'over', 'won']) $(s).classList.toggle('on', s === id)
 }
 
+// ---------------------------------------------------------------------------
+// replay controls
+// ---------------------------------------------------------------------------
+
+const rSeek = $('rSeek') as HTMLInputElement
+let seekDragging = false
+
+function startReplay() {
+  if (!recording || recording.frames < 2) return
+  replayFrom = phase === 'won' ? 'won' : 'over'
+  phase = 'replay'
+  replayT = 0
+  replaySpeed = 2
+  replayPaused = false
+  replayTop = false
+  sound.silenceEngine()
+  hideAll()
+  document.body.classList.add('replay')
+  seekSnap = true
+  syncReplayUi()
+}
+
+function endReplay() {
+  phase = replayFrom
+  document.body.classList.remove('replay')
+  camera.up.set(0, 1, 0)
+  // put the world lighting back the way the game expects it
+  topBlend = 0
+  ambient.intensity = AMBIENT_LIT
+  hemi.intensity = HEMI_LIT
+  moon.intensity = MOON_LIT
+  ;(scene.fog as THREE.FogExp2).density = 0.0165
+  for (const m of markers) m.visible = false
+  if (jeepMarker) jeepMarker.visible = false
+  show(replayFrom)
+}
+
+function syncReplayUi() {
+  $('rPlay').textContent = replayPaused ? 'Play' : 'Pause'
+  $('rSpeed').textContent = `${REPLAY_SPEEDS[replaySpeed]}×`
+  $('rView').textContent = replayTop ? 'Chase cam' : 'Overhead'
+}
+
+function updateReplayUi(total: number) {
+  if (!seekDragging) rSeek.value = String(total > 0 ? Math.round((replayT / total) * 1000) : 0)
+  $('rTime').textContent = fmtTime(replayT)
+}
+
+for (const b of Array.from(document.querySelectorAll('.replay'))) {
+  b.addEventListener('click', startReplay)
+}
+$('rBack').addEventListener('click', endReplay)
+$('rPlay').addEventListener('click', () => {
+  // restarting from the end is the common case, so rewind rather than stick
+  if (replayPaused && recording && replayT >= recording.seconds - 0.01) replayT = 0
+  replayPaused = !replayPaused
+  syncReplayUi()
+})
+$('rSlower').addEventListener('click', () => {
+  replaySpeed = Math.max(0, replaySpeed - 1)
+  syncReplayUi()
+})
+$('rFaster').addEventListener('click', () => {
+  replaySpeed = Math.min(REPLAY_SPEEDS.length - 1, replaySpeed + 1)
+  syncReplayUi()
+})
+$('rView').addEventListener('click', () => {
+  replayTop = !replayTop
+  syncReplayUi()
+})
+rSeek.addEventListener('pointerdown', () => (seekDragging = true))
+rSeek.addEventListener('pointerup', () => (seekDragging = false))
+rSeek.addEventListener('input', () => {
+  if (!recording) return
+  replayT = (Number(rSeek.value) / 1000) * recording.seconds
+  seekSnap = true // jump the camera rather than swooping across the map
+})
+
 function hideAll() {
   for (const s of ['start', 'over', 'won']) $(s).classList.remove('on')
 }
@@ -553,6 +840,8 @@ if (import.meta.env.DEV) {
         speed: jeep?.speed,
         baseDist: world ? Math.hypot(world.base.x - jeep.position.x, world.base.z - jeep.position.z) : -1,
         cover: +cover.toFixed(2),
+        replayBytes: recording?.bytes ?? 0,
+        replaySeconds: +(recording?.seconds ?? 0).toFixed(1),
         engineOn: jeep?.engineOn,
         rexes: rexes.map((r) => ({
           state: r.state,

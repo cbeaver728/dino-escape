@@ -79,6 +79,32 @@ chasing, but never uses the engine kill — gets there in **about 1 run in 4**
 (11 of 44 generated maps, 95% interval roughly 12–38%). A person has the hiding
 mechanic on top of that.
 
+## Watching it back
+
+Win or lose, the result screen offers **Watch the replay**. It plays back the
+whole run with pause, scrub, and speed from 0.25× to 4×, in two views:
+
+- **Chase cam** — behind the jeep, exactly as you drove it, including the
+  screen closing in when something was on you. This is the one where you find
+  out how close it actually got.
+- **Overhead** — 95m up, world-aligned so directions stay put, with a green pip
+  over the jeep and a red one over each rex. This is the one that answers
+  "where did that thing come from".
+
+The overhead view lifts the ambient light and thins the fog while it is active,
+because a night forest from 95m up is otherwise a black rectangle. The pips
+float above the canopy so you can follow an animal you cannot see through the
+trees, and brighten when it is actively chasing.
+
+It records state, not inputs. Replaying from inputs would be far smaller, but
+only if the simulation is perfectly deterministic, and this one runs on a
+variable frame clock with a shared RNG. Recording where everything actually was
+costs about 3MB for a run and cannot drift out of sync. Samples are taken at
+20Hz and interpolated on playback, so it is smooth at any speed and any frame
+rate; angles are wrapped properly and discrete things like a rex's state snap
+rather than blend. Poses are not stored — gait, jaw and neck all key off speed
+and state, so replaying those two reproduces the animation exactly.
+
 ## Controls
 
 **Phone** (laid out for a right-handed grip):
@@ -118,6 +144,7 @@ No art assets, no model files, no audio files — everything is generated at run
 | `src/postfx.ts` | The closing-in vignette, as a full-screen shader pass. |
 | `src/controls.ts` | Touch pedals and wheel, and the keyboard fallback. |
 | `src/audio.ts` | Synthesised engine, roars, footsteps and heartbeat via WebAudio. |
+| `src/replay.ts` | Fixed-rate state recorder and the interpolating sampler that plays it back. |
 | `src/rng.ts` | Seeded random and value noise, so a seed always rebuilds the same map. |
 
 A few things worth knowing if you go poking around:
@@ -172,3 +199,4 @@ The numbers that decide how the game feels:
 | `REX_COUNT` | `main.ts` | How crowded the map is. |
 | `MIN_TREE_GAP` | `world.ts` | Closest two trunks may stand - how open the woods feel. |
 | `MIN_CLEAR_FRACTION` | `postfx.ts` | The 60% visibility floor. |
+| `REPLAY_HZ` | `replay.ts` | Recording rate; trades replay memory against fidelity. |

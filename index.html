@@ -153,6 +153,54 @@
     box-shadow: 0 10px 34px rgba(47,198,95,.28);
   }
   button:active { transform: scale(.97); }
+  button.ghost {
+    background: none; color: var(--ink); box-shadow: none;
+    border: 1px solid rgba(150, 175, 210, .35); margin-left: 10px;
+  }
+
+  /* ---------- replay transport ---------- */
+  #replaybar {
+    position: fixed; z-index: 12; display: none;
+    left: 50%; transform: translateX(-50%);
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    width: min(560px, calc(100vw - 24px));
+    padding: 10px 12px; border-radius: 14px;
+    background: rgba(8, 12, 20, .82); border: 1px solid rgba(150, 175, 210, .22);
+    backdrop-filter: blur(10px);
+  }
+  body.replay #replaybar { display: block; }
+  body.replay #hud { display: none; }
+  .rrow { display: flex; align-items: center; gap: 8px; }
+  .rrow + .rrow { margin-top: 9px; }
+  .rbtn {
+    margin: 0; padding: 13px 0; flex: 1 1 0; min-width: 0;
+    font-size: 11px; letter-spacing: .1em; border-radius: 9px;
+    color: var(--ink); background: rgba(150, 175, 210, .16);
+    border: 1px solid rgba(150, 175, 210, .22); box-shadow: none;
+  }
+  .rbtn.wide { flex: 1.5 1 0; }
+  .rbtn:active { background: rgba(150, 175, 210, .3); }
+  #rSpeed {
+    flex: 0 0 42px; text-align: center; font-size: 12px; font-weight: 700;
+    font-variant-numeric: tabular-nums; color: #7dfaa8;
+  }
+  #rTime {
+    flex: 0 0 44px; text-align: right; font-size: 12px;
+    font-variant-numeric: tabular-nums; color: var(--dim);
+  }
+  #rSeek {
+    flex: 1 1 auto; min-width: 0; -webkit-appearance: none; appearance: none;
+    height: 22px; background: none;
+  }
+  #rSeek::-webkit-slider-runnable-track {
+    height: 5px; border-radius: 3px; background: rgba(150, 175, 210, .28);
+  }
+  #rSeek::-moz-range-track { height: 5px; border-radius: 3px; background: rgba(150, 175, 210, .28); }
+  #rSeek::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; margin-top: -6px;
+    width: 17px; height: 17px; border-radius: 50%; background: #7dfaa8; border: 0;
+  }
+  #rSeek::-moz-range-thumb { width: 17px; height: 17px; border-radius: 50%; background: #7dfaa8; border: 0; }
   #over h1 { color: #ff5246; text-shadow: 0 0 40px rgba(255,60,40,.5); }
   #won h1 { color: #7dfaa8; text-shadow: 0 0 40px rgba(60,255,140,.35); }
   .stat { font-variant-numeric: tabular-nums; color: var(--ink); font-size: 15px; }
@@ -225,6 +273,7 @@
     <p id="overMsg">It caught you.</p>
     <p class="stat" id="overStats"></p>
     <button class="again">New map, new run</button>
+    <button class="replay ghost">Watch the replay</button>
   </div></div>
 
   <div id="won" class="screen"><div class="inner">
@@ -232,7 +281,23 @@
     <p>Floodlights, fence, helipad. You made it.</p>
     <p class="stat" id="wonStats"></p>
     <button class="again">New map, new run</button>
+    <button class="replay ghost">Watch the replay</button>
   </div></div>
+
+  <div id="replaybar">
+    <div class="rrow">
+      <button id="rBack" class="rbtn wide">Done</button>
+      <button id="rPlay" class="rbtn">Pause</button>
+      <button id="rSlower" class="rbtn">&#9666;&#9666;</button>
+      <span id="rSpeed">1&times;</span>
+      <button id="rFaster" class="rbtn">&#9656;&#9656;</button>
+      <button id="rView" class="rbtn wide">Overhead</button>
+    </div>
+    <div class="rrow">
+      <input id="rSeek" type="range" min="0" max="1000" value="0" step="1" />
+      <span id="rTime">0:00</span>
+    </div>
+  </div>
 
   <div id="loading">Generating map</div>
 

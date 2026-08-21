@@ -265,6 +265,11 @@ export class Rex {
   readonly position = new THREE.Vector3()
   yaw = 0
   state: RexState = 'patrol'
+  /** Current ground speed, for the recorder. */
+  get replaySpeed(): number {
+    return this.speed
+  }
+
   /** Distance to the player, refreshed every tick. */
   distance = Infinity
 
@@ -685,6 +690,19 @@ export class Rex {
     const x = clamp(this.searchAnchor.x + Math.cos(a) * r, -HALF + 30, HALF - 30)
     const z = clamp(this.searchAnchor.z + Math.sin(a) * r, -HALF + 30, HALF - 30)
     this.searchPoint.set(x, this.world.heightAt(x, z), z)
+  }
+
+  /**
+   * Pose the animal from a recorded frame. Gait, jaw and neck all key off speed
+   * and state, so replaying those two reproduces the animation exactly without
+   * storing a joint angle per frame.
+   */
+  applyReplay(x: number, z: number, yaw: number, speed: number, state: RexState, dt: number, time: number) {
+    this.position.set(x, this.world.heightAt(x, z), z)
+    this.yaw = yaw
+    this.speed = speed
+    this.state = state
+    this.pose(dt, time)
   }
 
   /** 0 in the open, 3 when it is shouldering through a stand of trees. */

@@ -341,6 +341,35 @@ export class Herd {
     this.centre.set(cx, this.world.heightAt(cx, cz), cz)
   }
 
+  /** Deer in this herd, in a stable order, for recording and playback. */
+  get animals(): { position: THREE.Vector3; yaw: number; speed: number }[] {
+    return this.deer
+  }
+
+  /** Pose the herd from recorded frames. `read` yields one deer at a time. */
+  applyReplay(
+    read: (i: number) => { x: number; z: number; yaw: number; speed: number },
+    panic: number,
+    dt: number,
+  ) {
+    this.panic = panic
+    let cx = 0
+    let cz = 0
+    for (let i = 0; i < this.deer.length; i++) {
+      const d = read(i)
+      const deer = this.deer[i]
+      deer.position.set(d.x, this.world.heightAt(d.x, d.z), d.z)
+      deer.yaw = d.yaw
+      deer.speed = d.speed
+      deer.pose(dt, panic)
+      cx += d.x
+      cz += d.z
+    }
+    cx /= this.deer.length
+    cz /= this.deer.length
+    this.centre.set(cx, this.world.heightAt(cx, cz), cz)
+  }
+
   setVisible(v: boolean) {
     this.group.visible = v
   }

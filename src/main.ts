@@ -544,6 +544,19 @@ function drawRadar() {
   const scale = mid / DETECT_MAX // pixels per metre
   g.clearRect(0, 0, size, size)
 
+  // The dish paints its own backing and rim. It used to be a CSS background with
+  // a backdrop blur, which meant the compositor re-blurred the moving 3D scene
+  // behind it every frame; doing it here costs one filled circle instead.
+  g.fillStyle = 'rgba(6, 16, 22, 0.82)'
+  g.beginPath()
+  g.arc(mid, mid, mid - 1, 0, Math.PI * 2)
+  g.fill()
+  g.strokeStyle = 'rgba(90, 200, 240, 0.3)'
+  g.lineWidth = 2
+  g.beginPath()
+  g.arc(mid, mid, mid - 1, 0, Math.PI * 2)
+  g.stroke()
+
   const now = detectionRange(sense)
   g.strokeStyle = 'rgba(90, 200, 240, 0.22)'
   g.lineWidth = 2

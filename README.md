@@ -252,9 +252,16 @@ than the one this was written on, so a few things are deliberate:
   from exactly where it stopped. Only if it has not returned in 2.5 seconds does
   the player get a screen about it, naming the difficulty, the elapsed time, and
   whether the tab had just been in the background.
-- **The radar redraws at 15 Hz, not 60.** It is a second GPU-backed surface, and
-  every redraw pushes a fresh texture to the compositor. Nothing on the dish
-  moves fast enough to notice.
+- **The radar has no CSS effects on it at all.** It began as a translucent div
+  with `backdrop-filter: blur(4px)`, which reads far worse than it sounds: what
+  sits behind the dish is the live WebGL canvas, so the compositor had to read
+  that region back and re-blur it on every frame the game painted - 60 times a
+  second, whatever the canvas redraw rate. It was the one thing the handicap
+  added that scaled with framerate rather than with content, and turning the
+  radar on was enough to cost phones their GL context. The canvas now paints its
+  own dish and rim, so the whole radar is a single plain layer.
+- **The radar redraws at 15 Hz, not 60.** Every redraw pushes a fresh texture to
+  the compositor, and nothing on the dish moves fast enough to notice.
 
 A few things worth knowing if you go poking around:
 

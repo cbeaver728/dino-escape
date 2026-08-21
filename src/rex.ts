@@ -773,7 +773,13 @@ export class Rex {
     // already in the right spot; only the joints wait. `gait` keeps winding so
     // the stride does not visibly jump when it reappears.
     const seen = this.distance < VISIBLE_RANGE
-    if (this.root.visible !== seen) this.root.visible = seen
+    if (this.root.visible !== seen) {
+      this.root.visible = seen
+      // `visible` alone only skips drawing; three still walks the whole subtree
+      // every frame to refresh world matrices. Switching this off skips the
+      // fifty-odd joints too, which is where the real saving is.
+      this.root.matrixWorldAutoUpdate = seen
+    }
     if (!seen) {
       this.gait += (this.speed / (this.state === 'chase' ? 7.4 : 4.4)) * dt
       return

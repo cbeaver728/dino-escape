@@ -527,6 +527,8 @@ function fmtTime(s: number) {
  * as you slow down and collapses when you kill the engine, which makes the
  * whole noise mechanic visible instead of something you have to infer.
  */
+let lastRadarDraw = -1
+
 function drawRadar() {
   const g = radarCtx
   if (!g) return
@@ -606,7 +608,12 @@ function updateHud(locked: boolean, searching: boolean) {
   hudAlert.textContent = status
   hudAlert.className = status ? `on ${tone}` : ''
 
-  if (handicap) drawRadar()
+  // The dish is a second GPU surface, and redrawing it pushes a fresh texture
+  // to the compositor every time. Nothing on it moves fast enough to need 60 Hz.
+  if (handicap && elapsed - lastRadarDraw > 1 / 15) {
+    lastRadarDraw = elapsed
+    drawRadar()
+  }
 
   engineBtn.classList.toggle('off', !jeep.engineOn)
   engineLabel.textContent = jeep.engineOn ? 'On' : 'Off'
@@ -622,6 +629,13 @@ let skipRender = false
 
 function frame(now: number) {
   requestAnimationFrame(frame)
+  // Nothing may advance while the screen is frozen - otherwise a rex would keep
+  // closing on a player who cannot see it, and the run would be lost to a
+  // graphics fault rather than to anything they did.
+  if (contextLost) {
+    last = now
+    return
+  }
   const dt = Math.min(0.05, (now - last) / 1000)
   last = now
   tick(dt, now / 1000)
@@ -891,6 +905,7 @@ function newGame(seed?: number) {
   setTimeout(() => {
     buildWorld(seed ?? (Math.random() * 0xffffffff) >>> 0)
     elapsed = 0
+    lastRadarDraw = -1 // `elapsed` restarts, so the throttle has to as well
     fear = 0
     killer = null
     phase = 'playing'
@@ -1014,23 +1029,56 @@ function fitCamera() {
 // ---------------------------------------------------------------------------
 // losing the GL context
 // ---------------------------------------------------------------------------
-// Phones reclaim GPU memory from background or heavy pages, and when that
-// happens every draw call quietly becomes a no-op. Without this the screen just
-// stops updating with no clue why, which is indistinguishable from a crash. The
-// preventDefault is what makes the loss recoverable at all.
+// Phones reclaim GPU memory whenever they feel like it, and when that happens
+// every draw call quietly becomes a no-op. The page itself is untouched: the
+// map, the jeep and every rex live in ordinary JS objects and are all still
+// there. So a loss is treated as a pause, not as the end of the run - the sim
+// freezes, and if the browser hands the context back the run carries on from
+// exactly where it stopped.
+
+/** Phase to drop back into once the context returns. */
+let phaseBeforeLoss: Phase = 'menu'
+/** Last time the tab went into the background, to tell the two causes apart. */
+let hiddenAt = 0
+let restoreTimer = 0
+
 renderer.domElement.addEventListener('webglcontextlost', (e) => {
+  // Without this the loss is permanent - the browser will never restore a
+  // context the page did not ask to keep.
   e.preventDefault()
+  if (contextLost) return
   contextLost = true
-  phase = 'menu'
+  phaseBeforeLoss = phase
+  controls.release()
   sound.silenceEngine()
-  hideAll()
-  $('loading').classList.add('off')
-  $('lostDetail').textContent = `${DIFFICULTIES[difficulty].name} - ${rexes.length} rex on the map`
-  $('lost').classList.add('on')
+
+  // Give the browser a moment to hand it back on its own before bothering the
+  // player about it. Most losses come back inside a second.
+  clearTimeout(restoreTimer)
+  restoreTimer = window.setTimeout(() => {
+    if (!contextLost) return
+    const backgrounded = hiddenAt > 0 && performance.now() - hiddenAt < 10000
+    $('lostDetail').textContent =
+      `${DIFFICULTIES[difficulty].name}, ${rexes.length} rex, ${Math.floor(elapsed)}s in` +
+      (backgrounded ? ' - after the tab was in the background' : '')
+    hideAll()
+    $('loading').classList.add('off')
+    $('lost').classList.add('on')
+    phase = 'menu'
+  }, 2500)
 })
 
 renderer.domElement.addEventListener('webglcontextrestored', () => {
+  clearTimeout(restoreTimer)
   contextLost = false
+  // three.js rebuilds its own GL state, but the render target has to be sized
+  // against the new context before anything draws into it.
+  postfx.resize()
+  // Only resume the run if we never got as far as telling the player it broke.
+  if (!$('lost').classList.contains('on')) {
+    phase = phaseBeforeLoss
+    last = performance.now()
+  }
 })
 
 addEventListener('resize', () => {
@@ -1042,6 +1090,7 @@ fitCamera()
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
+    hiddenAt = performance.now()
     controls.release()
     sound.silenceEngine()
   }

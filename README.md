@@ -236,14 +236,19 @@ than the one this was written on, so a few things are deliberate:
   usual `sin(dot(p, big)) * 43758.0` trick feeds its sin a number in the
   hundreds of thousands, which overflows a mediump fragment shader to inf, then
   NaN, then white.
-- **A lost GL context says so.** Phones reclaim GPU memory, and when that happens
-  every draw call silently becomes a no-op - a frozen or blank screen with no
-  explanation. The handler calls `preventDefault()` (without it the loss can
-  never be recovered), stops drawing, and puts up a screen naming the difficulty
-  it died on.
-| `src/audio.ts` | Synthesised engine, roars, footsteps and heartbeat via WebAudio. |
-| `src/replay.ts` | Fixed-rate state recorder and the interpolating sampler that plays it back. |
-| `src/rng.ts` | Seeded random and value noise, so a seed always rebuilds the same map. |
+- **A lost GL context is survivable.** Phones reclaim GPU memory whenever they
+  feel like it, and when that happens every draw call silently becomes a no-op.
+  The page itself is untouched though - the map, the jeep and every rex are
+  ordinary JS objects and are all still there - so a loss is treated as a pause
+  rather than the end of the run. `preventDefault()` is what makes the context
+  recoverable at all; the simulation freezes so nothing can creep up on a player
+  who cannot see it; and if the browser hands the context back, the run resumes
+  from exactly where it stopped. Only if it has not returned in 2.5 seconds does
+  the player get a screen about it, naming the difficulty, the elapsed time, and
+  whether the tab had just been in the background.
+- **The radar redraws at 15 Hz, not 60.** It is a second GPU-backed surface, and
+  every redraw pushes a fresh texture to the compositor. Nothing on the dish
+  moves fast enough to notice.
 
 A few things worth knowing if you go poking around:
 

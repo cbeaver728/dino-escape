@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { World, HALF, WATER_LEVEL } from './world'
 import { Jeep, JEEP_TOP_SPEED } from './jeep'
-import { Rex, PlayerSense } from './rex'
+import { Rex, PlayerSense, detectionRange, DETECT_MAX, tuning } from './rex'
 import { Herd, spawnHerds } from './deer'
 import { Recording, REX_STATES, FLAG_ENGINE, FLAG_BRAKE } from './replay'
 import { Controls } from './controls'
@@ -15,12 +15,13 @@ import { Rng, clamp, damp, lerp, smoothstep } from './rng'
  * you, so the route seeding is what the difficulty is really felt through.
  */
 const DIFFICULTIES = [
-  { name: 'Easy', rexes: 5, onRoute: 1 },
-  { name: 'Medium', rexes: 10, onRoute: 3 },
-  { name: 'Hard', rexes: 15, onRoute: 5 },
-  { name: 'Legend', rexes: 30, onRoute: 8 },
+  { name: 'Easy', rexes: 5, onRoute: 1, winded: 1 },
+  { name: 'Medium', rexes: 10, onRoute: 3, winded: 1 },
+  { name: 'Hard', rexes: 30, onRoute: 8, winded: 1 },
+  // they get their breath back far quicker, so a blown sprint buys you little
+  { name: 'Legend', rexes: 45, onRoute: 11, winded: 0.55 },
 ]
-const COUNT_WORDS: Record<number, string> = { 5: 'Five', 10: 'Ten', 15: 'Fifteen', 30: 'Thirty' }
+const COUNT_WORDS: Record<number, string> = { 5: 'Five', 10: 'Ten', 30: 'Thirty', 45: 'Forty-five' }
 /** How far either side of the straight run to the base a seeded rex may sit. */
 const ROUTE_SPREAD = 80
 
@@ -199,6 +200,7 @@ function buildWorld(seed: number) {
   // A few are seeded loosely along the route to the base so a run always meets
   // something; the rest are scattered, and all of them wander from there.
   const diff = DIFFICULTIES[difficulty]
+  tuning.windedScale = diff.winded
   const routeX = world.base.x - world.spawn.x
   const routeZ = world.base.z - world.spawn.z
   const routeLen = Math.hypot(routeX, routeZ) || 1
@@ -505,6 +507,8 @@ const hudKph = $('kph')
 const hudDist = $('dist')
 const hudNeedle = $('needle')
 const hudAlert = $('alert')
+const radarCanvas = document.querySelector('#radar canvas') as HTMLCanvasElement
+const radarCtx = radarCanvas.getContext('2d')
 const engineBtn = $('engine')
 const engineLabel = $('engineState')
 
@@ -512,6 +516,62 @@ function fmtTime(s: number) {
   const m = Math.floor(s / 60)
   const sec = Math.floor(s % 60)
   return `${m}:${sec.toString().padStart(2, '0')}`
+}
+
+/**
+ * Handicap radar. The dish spans twice a rex's maximum detection range, so the
+ * rim sits exactly at the distance one could notice you flat out with the
+ * lights on. The inner ring is your detection radius *right now* - it shrinks
+ * as you slow down and collapses when you kill the engine, which makes the
+ * whole noise mechanic visible instead of something you have to infer.
+ */
+function drawRadar() {
+  const g = radarCtx
+  if (!g) return
+  const size = radarCanvas.width
+  const mid = size / 2
+  const scale = mid / DETECT_MAX // pixels per metre
+  g.clearRect(0, 0, size, size)
+
+  const now = detectionRange(sense)
+  g.strokeStyle = 'rgba(90, 200, 240, 0.22)'
+  g.lineWidth = 2
+  for (const frac of [0.5, 1]) {
+    g.beginPath()
+    g.arc(mid, mid, mid * frac - 1, 0, Math.PI * 2)
+    g.stroke()
+  }
+
+  // how far you are currently audible
+  g.strokeStyle = jeep.engineOn ? 'rgba(255, 196, 92, 0.55)' : 'rgba(125, 250, 168, 0.6)'
+  g.lineWidth = 2
+  g.beginPath()
+  g.arc(mid, mid, Math.max(3, now * scale), 0, Math.PI * 2)
+  g.stroke()
+
+  // Rexes, rotated so the top of the dish is where the jeep is pointing.
+  // Driver's right is -X in this right-handed world, same as the steering.
+  const sy = Math.sin(jeep.yaw)
+  const cy = Math.cos(jeep.yaw)
+  for (const rex of rexes) {
+    const dx = rex.position.x - jeep.position.x
+    const dz = rex.position.z - jeep.position.z
+    if (Math.hypot(dx, dz) > DETECT_MAX) continue
+    const fwd = dx * sy + dz * cy
+    const right = dz * sy - dx * cy
+    const px = mid + right * scale
+    const py = mid - fwd * scale
+    const hunting = rex.state === 'chase' || rex.state === 'winded'
+    g.fillStyle = hunting ? '#ff3b2a' : 'rgba(224, 74, 58, 0.65)'
+    g.beginPath()
+    g.arc(px, py, hunting ? 7 : 5, 0, Math.PI * 2)
+    g.fill()
+  }
+
+  g.fillStyle = '#7dfaa8'
+  g.beginPath()
+  g.arc(mid, mid, 5, 0, Math.PI * 2)
+  g.fill()
 }
 
 function updateHud(locked: boolean, searching: boolean) {
@@ -543,6 +603,8 @@ function updateHud(locked: boolean, searching: boolean) {
   }
   hudAlert.textContent = status
   hudAlert.className = status ? `on ${tone}` : ''
+
+  if (handicap) drawRadar()
 
   engineBtn.classList.toggle('off', !jeep.engineOn)
   engineLabel.textContent = jeep.engineOn ? 'On' : 'Off'
@@ -871,6 +933,27 @@ function syncDifficulty() {
 // ---------------------------------------------------------------------------
 // engine sound picker
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// handicap: radar
+// ---------------------------------------------------------------------------
+
+let handicap = localStorage.getItem('dino-escape-radar') === '1'
+
+function syncHandicap() {
+  const b = $('handicap')
+  b.classList.toggle('on', handicap)
+  const label = b.querySelector('small')
+  if (label) label.textContent = handicap ? 'on' : 'off'
+  document.body.classList.toggle('radar', handicap)
+}
+
+$('handicap').addEventListener('click', () => {
+  handicap = !handicap
+  localStorage.setItem('dino-escape-radar', handicap ? '1' : '0')
+  syncHandicap()
+})
+syncHandicap()
 
 function syncEngineKind() {
   for (const b of Array.from(document.querySelectorAll('.eng'))) {

@@ -85,13 +85,20 @@ difficulty, since they are not comparable across them.
 | --- | --- | --- | --- |
 | Easy | 5 | 1 | 61% |
 | Medium | 10 | 3 | 35% |
-| Hard | 15 | 5 | 25% |
-| Legend | 30 | 8 | 6% |
+| Hard | 30 | 8 | 5% |
+| Legend | 45 | 11 | 5-10% |
 
 The win rates are for a bot that drives for the base and swerves from anything
 chasing it but never uses the engine kill, over 18-20 generated maps each. At
 that sample the 95% interval is around +/-20pp, so treat them as a ladder rather
 than precise figures.
+
+Below roughly 15% the bot stops being a difficulty meter and becomes a floor
+detector: it dies at first contact either way, so it cannot separate Hard from
+Legend. Legend is harder by construction - half again as many animals, more of
+them in your lane, and a recovery window a bit over half as long - but that last
+knob only bites for someone good enough to survive first contact and then have
+to shake the thing off, which is exactly the player the bot is not.
 
 Seeded rexes sit within `ROUTE_SPREAD` (80m) of the straight line from your
 start to the base, so driving it directly is contested rather than a free run.
@@ -160,6 +167,20 @@ opening filter.
 
 A limiter now sits on the master output. The engine is loud enough that a roar
 landing on top of it would otherwise clip rather than duck.
+
+## Handicap: radar
+
+Optional, toggled on the start screen and remembered. A dish at the top left
+spanning twice a rex’s maximum detection range, so its rim sits exactly where
+one could notice you flat out with the lights on. Green centre dot is you,
+oriented so up is where you are pointing; red dots are rexes, brighter and
+larger when actively hunting.
+
+The amber ring is your detection radius *right now*. It shrinks as you slow
+down and collapses to almost nothing when you kill the engine, which makes the
+noise mechanic visible instead of something you infer. It reads from the same
+`detectionRange()` the AI uses, so it cannot drift out of step with the rule it
+is drawing.
 
 ## Controls
 
@@ -254,6 +275,7 @@ The numbers that decide how the game feels:
 | `HERD_COUNT` | `main.ts` | How much wildlife there is to read. |
 | `DIFFICULTIES` | `main.ts` | Rex counts and route seeding per difficulty. |
 | `ROUTE_SPREAD` | `main.ts` | How far off the direct line a seeded rex may sit. Tighten it and each seeded rex counts for roughly two. |
+| `tuning.windedScale` | `rex.ts` | Per-difficulty recovery window. Legend uses 0.55 - past ~30 rexes, count stops mattering and this is the lever left. |
 | `buildHum` / `buildBurble` | `audio.ts` | The two engine voices; `level()` sets loudness against revs. |
 | `MIN_TREE_GAP` | `world.ts` | Closest two trunks may stand - how open the woods feel. |
 | `MIN_CLEAR_FRACTION` | `postfx.ts` | The 60% visibility floor. |

@@ -17,6 +17,14 @@ const WINDED_SPEED = JEEP_TOP_SPEED * 0.42
 
 const SPRINT_SECONDS = 6
 const WINDED_SECONDS = 6.5
+
+/**
+ * Per-difficulty knobs. Adding rexes stops mattering past a point - the first
+ * one to reach you decides the run - so the top difficulty leans on the
+ * recovery window instead. Shorten it and the ground you claw back during each
+ * blown sprint shrinks, which is the actual thing that kills you.
+ */
+export const tuning = { windedScale: 1 }
 /**
  * Seconds with no trace of you before it stops chasing and starts hunting.
  * An engine cutting out is obvious immediately; a jeep pulling out of earshot
@@ -58,6 +66,20 @@ export type RexState = 'patrol' | 'alert' | 'chase' | 'winded' | 'search' | 'dee
 export interface Quarry {
   centre: THREE.Vector3
 }
+
+/**
+ * How far away a rex would notice the player right now. The AI computes this
+ * inline; this exposes the same rule so the radar can draw the truth rather
+ * than an approximation of it.
+ */
+export function detectionRange(sense: PlayerSense): number {
+  return sense.engineRunning
+    ? Math.max(sense.noiseRadius, HEADLIGHT_RANGE)
+    : lerp(SIGHT_EXPOSED, SIGHT_HIDDEN, sense.cover)
+}
+
+/** The widest that ever gets: flat out with the lights on. */
+export const DETECT_MAX = 106
 
 /** What the player is giving away this tick. */
 export interface PlayerSense {
@@ -469,9 +491,7 @@ export class Rex {
     // ---------------- senses ----------------
     // A running engine is heard from a long way off. Shut it down and it comes
     // down to eyesight, which thick cover defeats almost completely.
-    const detected = sense.engineRunning
-      ? this.distance < Math.max(sense.noiseRadius, HEADLIGHT_RANGE)
-      : this.distance < lerp(SIGHT_EXPOSED, SIGHT_HIDDEN, sense.cover)
+    const detected = this.distance < detectionRange(sense)
 
     if (detected) {
       this.lastKnown.copy(sense.position)
@@ -540,7 +560,7 @@ export class Rex {
       this.stamina -= dt
       if (this.stamina <= 0) {
         this.state = 'winded'
-        this.windedFor = WINDED_SECONDS
+        this.windedFor = WINDED_SECONDS * tuning.windedScale
       }
     } else if (this.state === 'winded') {
       this.windedFor -= dt

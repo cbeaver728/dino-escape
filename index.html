@@ -181,6 +181,34 @@
     background: linear-gradient(180deg, #ff9d8a, #e6473c); color: #240604;
   }
 
+  /* ---------- handicap toggle ---------- */
+  .toggle {
+    display: block; width: 100%; margin: 10px 0 0; padding: 11px 2px;
+    border-radius: 11px; font-size: 11px; letter-spacing: .08em;
+    color: var(--dim); background: rgba(150, 175, 210, .1);
+    border: 1px solid rgba(150, 175, 210, .2); box-shadow: none;
+  }
+  .toggle small {
+    display: block; font-size: 9px; letter-spacing: .04em;
+    opacity: .75; text-transform: none;
+  }
+  .toggle.on {
+    color: #9fe8ff; background: rgba(10, 32, 44, .8);
+    border-color: rgba(90, 200, 240, .6); font-weight: 800;
+  }
+
+  /* ---------- radar ---------- */
+  #radar {
+    position: absolute; display: none;
+    left: calc(14px + env(safe-area-inset-left));
+    top: calc(112px + env(safe-area-inset-top));
+    width: 116px; height: 116px; border-radius: 50%;
+    background: rgba(6, 16, 22, .55); border: 1px solid rgba(90, 200, 240, .3);
+    backdrop-filter: blur(4px);
+  }
+  body.radar #radar { display: block; }
+  #radar canvas { width: 100%; height: 100%; display: block; border-radius: 50%; }
+
   /* ---------- engine picker ---------- */
   #engineRow { display: flex; gap: 8px; margin: 10px 0 2px; }
   .eng {
@@ -271,6 +299,8 @@
       <div id="speedo" class="chip">Speed <b id="kph">0</b> kph</div>
     </div>
 
+    <div id="radar"><canvas width="232" height="232"></canvas></div>
+
     <div id="touch">
       <div id="pedals">
         <div id="go" class="pedal">Go</div>
@@ -299,13 +329,14 @@
     <div id="difficulty">
       <button class="diff" data-d="0">Easy<small>5 rex</small></button>
       <button class="diff" data-d="1">Medium<small>10 rex</small></button>
-      <button class="diff" data-d="2">Hard<small>15 rex</small></button>
-      <button class="diff" data-d="3">Legend<small>30 rex</small></button>
+      <button class="diff" data-d="2">Hard<small>30 rex</small></button>
+      <button class="diff" data-d="3">Legend<small>45 rex</small></button>
     </div>
     <div id="engineRow">
       <button class="eng" data-e="hum">Soft hum<small>tap to hear it</small></button>
       <button class="eng" data-e="burble">Round burble<small>tap to hear it</small></button>
     </div>
+    <button id="handicap" class="toggle">Handicap: radar<small>off</small></button>
     <button id="startBtn">Start the engine</button>
     <p class="stat" id="ctlHint"></p>
     <ul>

@@ -709,7 +709,6 @@ function tick(dt: number, time: number) {
         sound.silenceEngine()
         sound.roar(1)
       }
-      rex.root.visible = rex.distance < 200
     }
   }
 

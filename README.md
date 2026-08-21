@@ -230,11 +230,12 @@ than the one this was written on, so a few things are deliberate:
   beyond what the fog lets through) the rig is hidden and the joints are left
   alone. The AI still runs, so behaviour is identical; only the posing stops.
   Measured at 3.0 ms -> 1.4 ms per frame with 40-odd rexes on screen versus
-  culled. Visibility has exactly one owner: live play culls on fog range, the
-  replay sets its own wider limits, and `pose()` only ever honours the flag it
-  is given. It decided for itself once, which quietly overrode the replay and
-  left the overhead camera - the one view whose whole job is showing you where
-  the rex came from - with nothing in it.
+  culled. Visibility has exactly one owner - `Rex.setVisible`, which always
+  writes **both** `visible` and `matrixWorldAutoUpdate`. They have to move
+  together: visible with matrix updates off means three keeps drawing the rig at
+  whatever world matrix it last had, which is the origin. Three separate places
+  used to assign `.visible` directly, and any one of them could leave the pair
+  disagreeing.
 - **Nothing unbounded reaches the shader.** `performance.now()` climbs for as
   long as the tab is open, and both of its uses in the vignette are periodic, so
   the wrap happens on the CPU in float64. The grain hash is also sin-free: the

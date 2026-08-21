@@ -100,12 +100,12 @@ export interface PlayerSense {
 // ---------------------------------------------------------------------------
 
 /**
- * Past this the fog is total, so there is nothing to see however the limbs are
- * arranged. Beyond it the rig is hidden and left unposed: the AI still runs, so
- * behaviour is unchanged, but a Legend map stops spending every frame animating
- * forty-odd skeletons nobody can see.
+ * The distance play has always hidden rexes at. Fog closes in long before it, so
+ * nothing is lost visually; beyond it the rig is hidden and left unposed. The AI
+ * still runs, so behaviour is unchanged - a Legend map just stops spending every
+ * frame animating forty-odd skeletons nobody can see.
  */
-const VISIBLE_RANGE = 150
+const VISIBLE_RANGE = 200
 
 const SCALE = 0.72 // rig is authored large, then brought down to jeep scale
 const HIP_Y = 5.4 // body origin height, so the feet land on the ground
@@ -489,7 +489,10 @@ export class Rex {
    * over its fifty-odd joints - `visible` alone would only stop the draw.
    */
   setVisible(v: boolean) {
-    if (this.root.visible === v) return
+    // Both flags, every time, no early out. They have to move together: visible
+    // with matrix updates off means three keeps drawing the rig at whatever
+    // world matrix it last had, which is the origin. Skipping the write when
+    // `visible` already matched was how they came apart in the first place.
     this.root.visible = v
     this.root.matrixWorldAutoUpdate = v
   }

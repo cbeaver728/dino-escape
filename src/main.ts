@@ -15,12 +15,14 @@ import { Rng, clamp, damp, lerp, smoothstep } from './rng'
  * you, so the route seeding is what the difficulty is really felt through.
  */
 const DIFFICULTIES = [
-  { name: 'Easy', rexes: 5, onRoute: 2 },
-  { name: 'Medium', rexes: 10, onRoute: 4 },
-  { name: 'Hard', rexes: 15, onRoute: 7 },
-  { name: 'Legend', rexes: 30, onRoute: 12 },
+  { name: 'Easy', rexes: 5, onRoute: 1 },
+  { name: 'Medium', rexes: 10, onRoute: 3 },
+  { name: 'Hard', rexes: 15, onRoute: 5 },
+  { name: 'Legend', rexes: 30, onRoute: 8 },
 ]
 const COUNT_WORDS: Record<number, string> = { 5: 'Five', 10: 'Ten', 15: 'Fifteen', 30: 'Thirty' }
+/** How far either side of the straight run to the base a seeded rex may sit. */
+const ROUTE_SPREAD = 80
 
 /** Herds of deer, purely as an early-warning system for the player. */
 const HERD_COUNT = 9
@@ -199,6 +201,7 @@ function buildWorld(seed: number) {
   const diff = DIFFICULTIES[difficulty]
   const routeX = world.base.x - world.spawn.x
   const routeZ = world.base.z - world.spawn.z
+  const routeLen = Math.hypot(routeX, routeZ) || 1
   for (let i = 0; i < diff.rexes; i++) {
     const rex = new Rex(world, rng)
     const onRoute = i < diff.onRoute
@@ -207,10 +210,14 @@ function buildWorld(seed: number) {
       let x: number
       let z: number
       if (onRoute) {
-        const along = rng.range(0.35, 0.9)
-        const side = rng.range(-170, 170)
-        x = world.spawn.x + routeX * along - (routeZ / 600) * side
-        z = world.spawn.z + routeZ * along + (routeX / 600) * side
+        // Kept close to the line on purpose: at +/-170m these sat in the
+        // general area rather than in the way, and a straight run threaded
+        // between them. Normalised by the real route length so the spread is
+        // the same on a short map as a long one.
+        const along = rng.range(0.3, 0.92)
+        const side = rng.range(-ROUTE_SPREAD, ROUTE_SPREAD)
+        x = world.spawn.x + routeX * along - (routeZ / routeLen) * side
+        z = world.spawn.z + routeZ * along + (routeX / routeLen) * side
       } else {
         x = rng.range(-HALF + 80, HALF - 80)
         z = rng.range(-HALF + 80, HALF - 80)

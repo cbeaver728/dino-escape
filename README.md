@@ -83,13 +83,21 @@ difficulty, since they are not comparable across them.
 
 | | T-Rexes | seeded on your route | scripted driver wins |
 | --- | --- | --- | --- |
-| Easy | 5 | 2 | 50% |
-| Medium | 10 | 4 | 28% |
-| Hard | 15 | 7 | 11% |
-| Legend | 30 | 12 | 0% |
+| Easy | 5 | 1 | 61% |
+| Medium | 10 | 3 | 35% |
+| Hard | 15 | 5 | 25% |
+| Legend | 30 | 8 | 6% |
 
 The win rates are for a bot that drives for the base and swerves from anything
-chasing it but never uses the engine kill, over 18 generated maps each. A person
+chasing it but never uses the engine kill, over 18-20 generated maps each. At
+that sample the 95% interval is around +/-20pp, so treat them as a ladder rather
+than precise figures.
+
+Seeded rexes sit within `ROUTE_SPREAD` (80m) of the straight line from your
+start to the base, so driving it directly is contested rather than a free run.
+Averaged over 16 maps, the number sitting within 60m of that line is 1.0 on
+Easy, 2.6 on Medium, 4.1 on Hard and 6.4 on Legend; outside Easy no generated
+map leaves the lane empty. A person
 has the hiding mechanic on top of that.
 
 Worth knowing: on a map this size most of the pack never comes near you. Across
@@ -245,6 +253,7 @@ The numbers that decide how the game feels:
 | `REX_ALARM` | `deer.ts` | How far off a rex has to be before the herd bolts. |
 | `HERD_COUNT` | `main.ts` | How much wildlife there is to read. |
 | `DIFFICULTIES` | `main.ts` | Rex counts and route seeding per difficulty. |
+| `ROUTE_SPREAD` | `main.ts` | How far off the direct line a seeded rex may sit. Tighten it and each seeded rex counts for roughly two. |
 | `buildHum` / `buildBurble` | `audio.ts` | The two engine voices; `level()` sets loudness against revs. |
 | `MIN_TREE_GAP` | `world.ts` | Closest two trunks may stand - how open the woods feel. |
 | `MIN_CLEAR_FRACTION` | `postfx.ts` | The 60% visibility floor. |
